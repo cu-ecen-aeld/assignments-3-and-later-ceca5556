@@ -30,7 +30,7 @@ if [ -e $writefile ]
 
 then
   
-  echo "\n$writefile successfully written\n"
+  #echo "\n$writefile successfully written\n"
   exit 0
 
 else
