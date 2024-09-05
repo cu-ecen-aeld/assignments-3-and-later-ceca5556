@@ -26,8 +26,10 @@
 */
 int main(int argc, const char** argv){
 
+  // open log
   openlog(NULL,0,LOG_USER);
 
+  // check amount of arguments (./call file_dir string)
   if(argc != 3){
   
     syslog(LOG_ERR,"\nERROR: incorrect number of input arguments\n"
@@ -39,14 +41,16 @@ int main(int argc, const char** argv){
   
   }
   
-  
+  // save arguments to variables
   const char *file_dir = argv[1];
   const char *str = argv[2];
   
+  // open the file specified
   //FILE *file = fopen(argv[1],w);
   FILE *file = fopen(file_dir,"w");
   
   
+  // check if file was opened
   if(file == NULL){
   
     syslog(LOG_ERR, "ERROR: could not open file %s", file_dir);
@@ -55,18 +59,23 @@ int main(int argc, const char** argv){
   
   }
   
+  // find length of string
   //size_t str_size = strlen(argv[2]);
   size_t str_size = strlen(str);
   
+  // write string to file
   size_t num_write = fwrite(str, sizeof(char), str_size, file);
   syslog(LOG_DEBUG,"Writing '%s' to %s",str,file_dir);
   
+  // check bytes of input string to number of bytes written
   if(num_write != str_size){
   
-    syslog(LOG_ERR, "ERROR: could not successfully write input string to file");
+    syslog(LOG_ERR, "ERROR: could not successfully write input string '%s' to file '%s'",str,file_dir);
     
     exit(SYSTEM_ERROR);
   
   }
+  
+  closelog();
 
 }
