@@ -13,10 +13,17 @@
 
 
 // includes
+#include <stdlib.h>
 #include <stdio.h>
 #include <syslog.h>
 #include <string.h>
 
+
+/*
+*
+*  @brief entry point of writer.c
+*
+*/
 int main(int argc, const char** argv){
 
   openlog(NULL,0,LOG_USER);
@@ -37,7 +44,7 @@ int main(int argc, const char** argv){
   const char *str = argv[2];
   
   //FILE *file = fopen(argv[1],w);
-  FILE *file = fopen(file_dir],"w");
+  FILE *file = fopen(file_dir,"w");
   
   
   if(file == NULL){
