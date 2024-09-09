@@ -1,5 +1,11 @@
 #include "systemcalls.h"
 #include <syslog.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/wait.h>
 
 /**
  * @param cmd the command to execute with system()
@@ -83,7 +89,7 @@ bool do_exec(int count, ...)
     pid_t c_pid, w_pid;
     c_pid = fork();
     
-    if(child_pid == -1){
+    if(c_pid == -1){
     
       printf("ERROR: fork call failed: %s", strerror(errno));
       syslog(LOG_ERR,"ERROR: fork call failed: %s", strerror(errno));
@@ -181,6 +187,15 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
     // redirect
     int new_fd = dup2(fd,1);
     
+    if(new_fd == -1){
+    
+      printf("ERROR: redirect failed: %s", strerror(errno));
+      syslog(LOG_ERR,"ERROR: redirect failed: %s", strerror(errno));
+      return false;       
+    
+    }
+    
+    
     close(fd);
     
     
@@ -200,7 +215,7 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
     
     int wstatus;
     
-    w_pid = waitpid(c_pid,&wstatus,0);
+    pid_t w_pid = waitpid(c_pid,&wstatus,0);
     
     if(w_pid == -1){
     
