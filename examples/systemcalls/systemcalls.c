@@ -1,4 +1,5 @@
 #include "systemcalls.h"
+#include <syslog.h>
 
 /**
  * @param cmd the command to execute with system()
@@ -16,6 +17,26 @@ bool do_system(const char *cmd)
  *   and return a boolean true if the system() call completed with success
  *   or false() if it returned a failure
 */
+    
+    if(cmd == NULL){
+    
+      printf("ERROR: input command is Null");
+      syslog(LOG_ERR,"ERROR: input command is Null");
+      return false;
+    
+    }
+    
+    
+    int err_code = system(cmd);
+    
+    if(err_code == -1){
+    
+      printf("ERROR: system call failed: %s", strerror(errno));
+      syslog(LOG_ERR,"ERROR: system call failed: %s", strerror(errno));
+      return false;    
+    
+    }
+    
 
     return true;
 }
@@ -59,6 +80,48 @@ bool do_exec(int count, ...)
  *
 */
 
+    pid_t c_pid, w_pid;
+    c_pid = fork();
+    
+    if(child_pid == -1){
+    
+      printf("ERROR: fork call failed: %s", strerror(errno));
+      syslog(LOG_ERR,"ERROR: fork call failed: %s", strerror(errno));
+      return false;        
+    
+    }
+    
+    char** arg = command+1;
+    
+    int err_code = execv(command[0],arg);
+    
+    
+    if(err_code == -1){
+    
+      printf("ERROR: execv call failed: %s", strerror(errno));
+      syslog(LOG_ERR,"ERROR: execv call failed: %s", strerror(errno));
+      return false;  
+    
+    }
+    
+    int wstatus;
+    
+    w_pid = waitpid(c_pid,&wstatus,0);
+    
+    if(w_pid == -1){
+    
+      printf("ERROR: wait failed: %s", strerror(errno));
+      syslog(LOG_ERR,"ERROR: wait failed: %s", strerror(errno));
+      return false;  
+    
+    }
+    //else if(w_pid != c_pid){
+    
+      
+    
+    //}
+    
+    
     va_end(args);
 
     return true;
@@ -93,6 +156,66 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
  *
 */
 
+    // open file
+    int fd = open(outputfile, O_WRONLY|O_TRUNC|O_CREAT,0644);
+    
+    if(fd == -1){
+    
+      printf("ERROR: file %s failed to open: %s",outputfile, strerror(errno));
+      syslog(LOG_ERR,"ERROR: file %s failed to open: %s",outputfile, strerror(errno));
+      return false;        
+    
+    }
+
+    //create fork
+    pid_t c_pid = fork();
+    
+    if(c_pid == -1){
+    
+      printf("ERROR: fork call failed: %s", strerror(errno));
+      syslog(LOG_ERR,"ERROR: fork call failed: %s", strerror(errno));
+      return false;       
+    
+    } 
+    
+    // redirect
+    int new_fd = dup2(fd,1);
+    
+    close(fd);
+    
+    
+    // execute execv
+    char** arg = command+1;
+    
+    int err_code = execv(command[0],arg);
+    
+    
+    if(err_code == -1){
+    
+      printf("ERROR: execv call failed: %s", strerror(errno));
+      syslog(LOG_ERR,"ERROR: execv call failed: %s", strerror(errno));
+      return false;  
+    
+    }
+    
+    int wstatus;
+    
+    w_pid = waitpid(c_pid,&wstatus,0);
+    
+    if(w_pid == -1){
+    
+      printf("ERROR: wait failed: %s", strerror(errno));
+      syslog(LOG_ERR,"ERROR: wait failed: %s", strerror(errno));
+      return false;  
+    
+    }
+    //else if(w_pid != c_pid){
+    
+      
+    
+    //}
+     
+  
     va_end(args);
 
     return true;
