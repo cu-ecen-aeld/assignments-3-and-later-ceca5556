@@ -87,49 +87,85 @@ bool do_exec(int count, ...)
 */
 
     pid_t c_pid, w_pid;
+    
+    openlog("do_exec_func",0,LOG_USER);
+    
+    fflush(stdout);
     c_pid = fork();
     
-    if(c_pid == -1){
-    
-      printf("ERROR: fork call failed: %s", strerror(errno));
-      syslog(LOG_ERR,"ERROR: fork call failed: %s", strerror(errno));
-      return false;        
-    
+    if(c_pid == -1){// failed fork
+        //printf("ERROR: fork call failed: %s\n", strerror(errno));
+        syslog(LOG_ERR,"ERROR: fork call failed: %s\n", strerror(errno));
+        return false;
     }
     
-    char** arg = command+1;
-    
-    int err_code = execv(command[0],arg);
-    
-    
-    if(err_code == -1){
-    
-      printf("ERROR: execv call failed: %s", strerror(errno));
-      syslog(LOG_ERR,"ERROR: execv call failed: %s", strerror(errno));
-      return false;  
-    
-    }
-    
-    int wstatus;
-    
-    w_pid = waitpid(c_pid,&wstatus,0);
-    
-    if(w_pid == -1){
-    
-      printf("ERROR: wait failed: %s", strerror(errno));
-      syslog(LOG_ERR,"ERROR: wait failed: %s", strerror(errno));
-      return false;  
-    
-    }
-    //else if(w_pid != c_pid){
-    
+    else if(c_pid == 0){// child
+        //char** arg = command+1;
       
+        int err_code = execv(command[0],command);
+      
+      
+        if(err_code == -1){
+      
+          //printf("ERROR: execv call failed: %s\n", strerror(errno));
+          
+          syslog(LOG_ERR,"ERROR: execv call failed: %s\n", strerror(errno));
+          //printf("child fail\n");
+          exit(EXIT_FAILURE);  
+      
+        }
+        //printf("child success\n");
+        exit(EXIT_SUCCESS);
+        
+    }
     
-    //}
+    else{// parent
+        //printf("parent waiting on child... child PID: %d\n", (int)c_pid);
+        
+        int wstatus;
+        w_pid = waitpid(c_pid,&wstatus,0); // wait for child
+        
+        if(w_pid == -1){
+        
+          //printf("ERROR: wait failed: %s\n", strerror(errno));
+          syslog(LOG_ERR,"ERROR: wait failed: %s\n", strerror(errno));
+          //output = false;
+          return false;  
+        
+        }
+        // check if w_pid matches
+        else if(w_pid == c_pid){
+        
+          // check if exited
+          if(WIFEXITED(wstatus)){
+        
+            // check status of exit
+            if(WEXITSTATUS(wstatus) == EXIT_SUCCESS){
+            
+              return true;
+            
+            }
+            else if (WEXITSTATUS(wstatus) == EXIT_FAILURE){
+            
+              return false;
+            
+            }
+            
+        else{
+        
+          return false;
+        }
+            
+            
+        
+          }
+        }
+    
+    }
     
     
     va_end(args);
-
+    closelog();
     return true;
 }
 
@@ -162,6 +198,8 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
  *
 */
 
+    openlog("do_exec_redirect_func",0,LOG_USER);
+
     // open file
     int fd = open(outputfile, O_WRONLY|O_TRUNC|O_CREAT,0644);
     
@@ -174,64 +212,94 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
     }
 
     //create fork
-    pid_t c_pid = fork();
+    pid_t c_pid, w_pid;
+    c_pid = fork();
     
-    if(c_pid == -1){
+    if(c_pid == -1){// failed fork
     
-      printf("ERROR: fork call failed: %s", strerror(errno));
-      syslog(LOG_ERR,"ERROR: fork call failed: %s", strerror(errno));
-      return false;       
+        printf("ERROR: fork call failed: %s", strerror(errno));
+        syslog(LOG_ERR,"ERROR: fork call failed: %s", strerror(errno));
+        return false;       
     
     } 
     
-    // redirect
-    int new_fd = dup2(fd,1);
+    else if(c_pid == 0){// child
     
-    if(new_fd == -1){
+        // redirect
+        int new_fd = dup2(fd,1);
+        
+        if(new_fd == -1){
+        
+          printf("ERROR: redirect failed: %s", strerror(errno));
+          syslog(LOG_ERR,"ERROR: redirect failed: %s", strerror(errno));
+          exit(EXIT_FAILURE);       
+        
+        }
+        
+        close(fd);
     
-      printf("ERROR: redirect failed: %s", strerror(errno));
-      syslog(LOG_ERR,"ERROR: redirect failed: %s", strerror(errno));
-      return false;       
-    
-    }
-    
-    
-    close(fd);
-    
-    
-    // execute execv
-    char** arg = command+1;
-    
-    int err_code = execv(command[0],arg);
-    
-    
-    if(err_code == -1){
-    
-      printf("ERROR: execv call failed: %s", strerror(errno));
-      syslog(LOG_ERR,"ERROR: execv call failed: %s", strerror(errno));
-      return false;  
-    
-    }
-    
-    int wstatus;
-    
-    pid_t w_pid = waitpid(c_pid,&wstatus,0);
-    
-    if(w_pid == -1){
-    
-      printf("ERROR: wait failed: %s", strerror(errno));
-      syslog(LOG_ERR,"ERROR: wait failed: %s", strerror(errno));
-      return false;  
+        // execute execv
+        //char** arg = command+1;
+        
+        int err_code = execv(command[0],command);
+        
+        
+        if(err_code == -1){
+        
+          printf("ERROR: execv call failed: %s", strerror(errno));
+          syslog(LOG_ERR,"ERROR: execv call failed: %s", strerror(errno));
+          exit(EXIT_FAILURE);
+        
+        }
     
     }
-    //else if(w_pid != c_pid){
     
-      
+    else{// parent
+        //printf("parent waiting on child... child PID: %d\n", (int)c_pid);
+        
+        int wstatus;
+        w_pid = waitpid(c_pid,&wstatus,0); // wait for child
+        
+        if(w_pid == -1){
+        
+          //printf("ERROR: wait failed: %s\n", strerror(errno));
+          syslog(LOG_ERR,"ERROR: wait failed: %s\n", strerror(errno));
+          //output = false;
+          return false;  
+        
+        }
+        // check if w_pid matches
+        else if(w_pid == c_pid){
+        
+          // check if exited
+          if(WIFEXITED(wstatus)){
+        
+            // check status of exit
+            if(WEXITSTATUS(wstatus) == EXIT_SUCCESS){
+            
+              return true;
+            
+            }
+            else if (WEXITSTATUS(wstatus) == EXIT_FAILURE){
+            
+              return false;
+            
+            }
+            
+        else{
+        
+          return false;
+        }
+            
+            
+        
+          }
+        }
     
-    //}
+    }
      
   
     va_end(args);
-
+    closelog();
     return true;
 }
