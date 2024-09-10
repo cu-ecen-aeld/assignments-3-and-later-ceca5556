@@ -87,6 +87,7 @@ bool do_exec(int count, ...)
 */
 
     pid_t c_pid, w_pid;
+    bool output;
     
     openlog("do_exec_func",0,LOG_USER);
     
@@ -96,7 +97,8 @@ bool do_exec(int count, ...)
     if(c_pid == -1){// failed fork
         //printf("ERROR: fork call failed: %s\n", strerror(errno));
         syslog(LOG_ERR,"ERROR: fork call failed: %s\n", strerror(errno));
-        return false;
+        output = false;
+        //return false;
     }
     
     else if(c_pid == 0){// child
@@ -129,8 +131,8 @@ bool do_exec(int count, ...)
         
           //printf("ERROR: wait failed: %s\n", strerror(errno));
           syslog(LOG_ERR,"ERROR: wait failed: %s\n", strerror(errno));
-          //output = false;
-          return false;  
+          output = false;
+          //return false;  
         
         }
         // check if w_pid matches
@@ -142,19 +144,19 @@ bool do_exec(int count, ...)
             // check status of exit
             if(WEXITSTATUS(wstatus) == EXIT_SUCCESS){
             
-              return true;
+              output = true;
             
             }
             else if (WEXITSTATUS(wstatus) == EXIT_FAILURE){
-            
-              return false;
+              
+              output = false;
             
             }
             
-        else{
-        
-          return false;
-        }
+          else{
+          
+            output = false;
+          }
             
             
         
@@ -163,10 +165,11 @@ bool do_exec(int count, ...)
     
     }
     
-    
     va_end(args);
     closelog();
-    return true;
+    return output;
+    //return true;
+    
 }
 
 /**
@@ -213,13 +216,15 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
 
     //create fork
     pid_t c_pid, w_pid;
+    bool output;
     c_pid = fork();
     
     if(c_pid == -1){// failed fork
     
         printf("ERROR: fork call failed: %s", strerror(errno));
         syslog(LOG_ERR,"ERROR: fork call failed: %s", strerror(errno));
-        return false;       
+        output = false;
+        //return false;       
     
     } 
     
@@ -264,8 +269,8 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
         
           //printf("ERROR: wait failed: %s\n", strerror(errno));
           syslog(LOG_ERR,"ERROR: wait failed: %s\n", strerror(errno));
-          //output = false;
-          return false;  
+          output = false;
+          //return false;  
         
         }
         // check if w_pid matches
@@ -277,18 +282,18 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
             // check status of exit
             if(WEXITSTATUS(wstatus) == EXIT_SUCCESS){
             
-              return true;
+              output = true;
             
             }
             else if (WEXITSTATUS(wstatus) == EXIT_FAILURE){
             
-              return false;
+              output = false;
             
             }
             
         else{
         
-          return false;
+          output = false;
         }
             
             
