@@ -67,13 +67,13 @@ fi
 
 # TODO: Create necessary base directories
 #--------------------------------------
-# create and go into rootfs directory
-#mkdir $(OUTDIR)/rootfs && cd $(OUTDIR)/rootfs
+# create and cd into rootfs directory 
+mkdir $(OUTDIR)/rootfs && cd $(OUTDIR)/rootfs
 
-## create all subdirectories
-#mkdir -p bin dev etc home lib lib64 proc sys sbin tmp usr var
-#mkdir -p usr/bin usr/lib usr/sbin
-#mkdir -p var/log
+# create all subdirectories
+mkdir -p bin dev etc home lib lib64 proc sys sbin tmp usr var
+mkdir -p usr/bin usr/lib usr/sbin
+mkdir -p var/log
 #--------------------------------------
 
 cd "$OUTDIR"
