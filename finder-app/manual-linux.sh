@@ -103,12 +103,15 @@ ${CROSS_COMPILE}readelf -a bin/busybox | grep "Shared library"
 
 # TODO: Add library dependencies to rootfs
 #--------------------------------------
-#cd $(OUTDIR)/rootfs
-#TC_SYSROOT = /home/ceca5556/arm-cross-compiler/gcc-arm-10.3-2021.07-x86_64-aarch64-none-linux-gnu/bin/../aarch64-none-linux-gnu/libc
-#cp TC_SYSROOT/lib/ld-linux-aarch64.so.1 lib
-#cp TC_SYSROOT/lib64/libm.so.6 lib64
-#cp TC_SYSROOT/lib64/libresolv.so.2 lib64
-#cp TC_SYSROOT/lib64/libc.so.6 lib64
+# cd into rootfs
+cd $(OUTDIR)/rootfs
+
+# copy necessary files from toolchain
+TC_SYSROOT = /home/ceca5556/arm-cross-compiler/gcc-arm-10.3-2021.07-x86_64-aarch64-none-linux-gnu/bin/../aarch64-none-linux-gnu/libc #assignment 2 -print-sysroot
+cp TC_SYSROOT/lib/ld-linux-aarch64.so.1 lib
+cp TC_SYSROOT/lib64/libm.so.6 lib64
+cp TC_SYSROOT/lib64/libresolv.so.2 lib64
+cp TC_SYSROOT/lib64/libc.so.6 lib64
 #--------------------------------------
 
 # TODO: Make device nodes
