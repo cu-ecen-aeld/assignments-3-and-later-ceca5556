@@ -37,19 +37,19 @@ if [ ! -e ${OUTDIR}/linux-stable/arch/${ARCH}/boot/Image ]; then
     # TODO: Add your kernel build steps here
     #--------------------------------------
     # deep clean
-    make ARCH=arm64 CROSS_COMPILE=$(CROSS_COMPILE) mrproper
+    make ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) mrproper
     
     # configure virtual dev board
-    make ARCH=arm64 CROSS_COMPILE=$(CROSS_COMPILE) defconfig
+    make ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) defconfig
     
     # build kernal image
-    make -j4 ARCH=arm64 CROSS_COMPILE=$(CROSS_COMPILE) all
+    make -j4 ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) all
     
     # build any kernal modules
-    make ARCH=arm64 CROSS_COMPILE=$(CROSS_COMPILE) modules
+    make ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) modules
     
     # build devicetree
-    make ARCH=arm64 CROSS_COMPILE=$(CROSS_COMPILE) dtbs
+    make ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) dtbs
     #--------------------------------------
 fi
 
