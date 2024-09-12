@@ -37,27 +37,36 @@ if [ ! -e ${OUTDIR}/linux-stable/arch/${ARCH}/boot/Image ]; then
     # TODO: Add your kernel build steps here
     #--------------------------------------
     # deep clean
+    echo "deep cleaning kernel build tree"
     make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} mrproper
     
     # configure virtual dev board
+    echo "configuring arm dev board simulation"
     make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} defconfig
     
     # build kernal image
+    echo "build kernel image"
     make -j8 ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} all
     
     # build any kernal modules
+    echo "building modules"
     make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} modules
     
     # build devicetree
+    echo "building devicetree"
     make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} dtbs
+    
+    echo "NOTICE:all build kernel build steps complete!"
     #--------------------------------------
 fi
 
-echo "Adding the Image in outdir"
-cp -v ${OUTDIR}/linux-stable/arch/${ARCH}/boot/Image ${OUTDIR}/
+# copy kernel image to output directory
+echo "NOTICE:Adding the Image in outdir..."
+cp ${OUTDIR}/linux-stable/arch/${ARCH}/boot/Image ${OUTDIR}/
+echo "NOTICE:kernel image copied!"
 
 
-echo "Creating the staging directory for the root filesystem"
+echo "NOTICE:Creating the staging directory for the root filesystem..."
 cd "$OUTDIR"
 if [ -d "${OUTDIR}/rootfs" ]
 then
@@ -70,10 +79,12 @@ fi
 # create and cd into rootfs directory 
 mkdir ${OUTDIR}/rootfs && cd ${OUTDIR}/rootfs
 
+echo "NOTICE:creating rootfs subdirectories..."
 # create all subdirectories
-mkdir -pv bin dev etc home lib lib64 proc sys sbin tmp usr var
-mkdir -pv usr/bin usr/lib usr/sbin
-mkdir -pv var/log
+mkdir -p bin dev etc home lib lib64 proc sys sbin tmp usr var
+mkdir -p usr/bin usr/lib usr/sbin
+mkdir -p var/log
+echo "NOTICE:rootfs and subriectories created!"
 #--------------------------------------
 
 cd "$OUTDIR"
@@ -84,6 +95,7 @@ git clone git://busybox.net/busybox.git
     git checkout ${BUSYBOX_VERSION}
     # TODO:  Configure busybox
     #--------------------------------------
+    echo "NOTICE:configuring busybox"
     make distclean
     make defconfig
     #--------------------------------------
@@ -109,29 +121,36 @@ ${CROSS_COMPILE}readelf -a bin/busybox | grep "Shared library"
 
 # copy necessary files from toolchain
 TC_SYSROOT=$(${CROSS_COMPILE}gcc -print-sysroot)
+
+echo "NOTICE:copying dependecies to rootfs..."
 cp ${TC_SYSROOT}/lib/ld-linux-aarch64.so.1 lib
 cp ${TC_SYSROOT}/lib64/libm.so.6 lib64
 cp ${TC_SYSROOT}/lib64/libresolv.so.2 lib64
 cp ${TC_SYSROOT}/lib64/libc.so.6 lib64
+echo "NOTICE:dependencies copied!"
 #--------------------------------------
 
 # TODO: Make device nodes
 #--------------------------------------
+echo "NOTICE:creating device nodes..."
 sudo mknod -m 666 dev/null c 1 3
 sudo mknod -m 600 dev/console c 5 1
+echo "NOTICE:device nodes created!"
 #--------------------------------------
 
 # TODO: Clean and build the writer utility
 #--------------------------------------
+echo "NOTICE:building writer app..."
 cd ${FINDER_APP_DIR}
 make clean
-make 
+make
+echo "NOTICE:writer app succesfully built"
 #--------------------------------------
 
 # TODO: Copy the finder related scripts and executables to the /home directory
 # on the target rootfs
 #--------------------------------------
-
+echo "NOTICE:copying finder related scripts to rootfs/home..."
 cp writer ${OUTDIR}/rootfs/home
 
 cp finder.sh ${OUTDIR}/rootfs/home
@@ -139,16 +158,19 @@ cp finder-test.sh ${OUTDIR}/rootfs/home
 cp -rL conf ${OUTDIR}/rootfs/home
 
 cp autorun-qemu.sh ${OUTDIR}/rootfs/home
+echo "NOTICE:files copied!"
 #--------------------------------------
 
 # TODO: Chown the root directory
 #--------------------------------------
+echo "NOTICE:changing owner of rootfs to root"
 cd ${OUTDIR}/rootfs
 sudo chown -R root:root *
 #--------------------------------------
 
 # TODO: Create initramfs.cpio.gz
 #--------------------------------------
+echo "NOTICE:creating initramfs.cpio"
 find . | cpio -H newc -ov --owner root:root > ${OUTDIR}/initramfs.cpio
 gzip -f ${OUTDIR}/initramfs.cpio
 #--------------------------------------
