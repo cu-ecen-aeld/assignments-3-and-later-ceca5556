@@ -54,7 +54,7 @@ if [ ! -e ${OUTDIR}/linux-stable/arch/${ARCH}/boot/Image ]; then
 fi
 
 echo "Adding the Image in outdir"
-cp -rv $(OUTDIR)/linux-stable $(OUTDIR)/
+cp -v ${OUTDIR}/linux-stable/arch/${ARCH}/boot/Image $(OUTDIR)/
 
 
 echo "Creating the staging directory for the root filesystem"
@@ -71,9 +71,9 @@ fi
 mkdir $(OUTDIR)/rootfs && cd $(OUTDIR)/rootfs
 
 # create all subdirectories
-mkdir -p bin dev etc home lib lib64 proc sys sbin tmp usr var
-mkdir -p usr/bin usr/lib usr/sbin
-mkdir -p var/log
+mkdir -pv bin dev etc home lib lib64 proc sys sbin tmp usr var
+mkdir -pv usr/bin usr/lib usr/sbin
+mkdir -pv var/log
 #--------------------------------------
 
 cd "$OUTDIR"
@@ -108,10 +108,10 @@ cd $(OUTDIR)/rootfs
 
 # copy necessary files from toolchain
 TC_SYSROOT = /home/ceca5556/arm-cross-compiler/gcc-arm-10.3-2021.07-x86_64-aarch64-none-linux-gnu/bin/../aarch64-none-linux-gnu/libc #assignment 2 -print-sysroot
-cp TC_SYSROOT/lib/ld-linux-aarch64.so.1 lib
-cp TC_SYSROOT/lib64/libm.so.6 lib64
-cp TC_SYSROOT/lib64/libresolv.so.2 lib64
-cp TC_SYSROOT/lib64/libc.so.6 lib64
+cp -v TC_SYSROOT/lib/ld-linux-aarch64.so.1 lib
+cp -v TC_SYSROOT/lib64/libm.so.6 lib64
+cp -v TC_SYSROOT/lib64/libresolv.so.2 lib64
+cp -v TC_SYSROOT/lib64/libc.so.6 lib64
 #--------------------------------------
 
 # TODO: Make device nodes
@@ -122,13 +122,22 @@ sudo mknod -m 600 dev/console c 5 1
 
 # TODO: Clean and build the writer utility
 #--------------------------------------
-
+cd $(FINDER_APP_DIR)
+make clean
+make 
 #--------------------------------------
 
 # TODO: Copy the finder related scripts and executables to the /home directory
 # on the target rootfs
 #--------------------------------------
 
+cp writer $(OUTDIR)/rootfs/home
+
+cp finder.sh $(OUTDIR)/rootfs/home
+cp finder-test.sh $(OUTDIR)/rootfs/home
+cp -r conf $(OUTDIR)/rootfs/home
+
+cp autorun-qemu.sh $(OUTDIR)/rootfs/home
 #--------------------------------------
 
 # TODO: Chown the root directory
