@@ -43,7 +43,7 @@ if [ ! -e ${OUTDIR}/linux-stable/arch/${ARCH}/boot/Image ]; then
     make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} defconfig
     
     # build kernal image
-    make -j4 ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} all
+    make -j8 ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} all
     
     # build any kernal modules
     make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} modules
