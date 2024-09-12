@@ -97,21 +97,22 @@ make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE}
 make CONFIG_PREFIX=${OUTDIR}/rootfs ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} install
 #--------------------------------------
 
+# cd into rootfs
+cd ${OUTDIR}/rootfs
+
 echo "Library dependencies"
 ${CROSS_COMPILE}readelf -a bin/busybox | grep "program interpreter"
 ${CROSS_COMPILE}readelf -a bin/busybox | grep "Shared library"
 
 # TODO: Add library dependencies to rootfs
 #--------------------------------------
-# cd into rootfs
-cd ${OUTDIR}/rootfs
 
 # copy necessary files from toolchain
-TC_SYSROOT = ${CROSS_COMPILE}gcc -print-sysroot
-cp -v TC_SYSROOT/lib/ld-linux-aarch64.so.1 lib
-cp -v TC_SYSROOT/lib64/libm.so.6 lib64
-cp -v TC_SYSROOT/lib64/libresolv.so.2 lib64
-cp -v TC_SYSROOT/lib64/libc.so.6 lib64
+TC_SYSROOT=$(${CROSS_COMPILE}gcc -print-sysroot)
+cp -v ${TC_SYSROOT}/lib/ld-linux-aarch64.so.1 lib
+cp -v ${TC_SYSROOT}/lib64/libm.so.6 lib64
+cp -v ${TC_SYSROOT}/lib64/libresolv.so.2 lib64
+cp -v ${TC_SYSROOT}/lib64/libc.so.6 lib64
 #--------------------------------------
 
 # TODO: Make device nodes
@@ -133,9 +134,9 @@ make
 
 cp writer ${OUTDIR}/rootfs/home
 
-cp finder.sh ${OUTDIR}/rootfs/home
-cp finder-test.sh ${OUTDIR}/rootfs/home
-cp -r conf ${OUTDIR}/rootfs/home
+cp -v finder.sh ${OUTDIR}/rootfs/home
+cp -v finder-test.sh ${OUTDIR}/rootfs/home
+cp -rLv conf ${OUTDIR}/rootfs/home
 
 cp autorun-qemu.sh ${OUTDIR}/rootfs/home
 #--------------------------------------
@@ -149,5 +150,5 @@ sudo chown -R root:root *
 # TODO: Create initramfs.cpio.gz
 #--------------------------------------
 find . | cpio -H newc -ov --owner root:root > ${OUTDIR}/initramfs.cpio
-gzip -f initramfs.cpio
+gzip -f ${OUTDIR}/initramfs.cpio
 #--------------------------------------
