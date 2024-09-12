@@ -109,10 +109,10 @@ ${CROSS_COMPILE}readelf -a bin/busybox | grep "Shared library"
 
 # copy necessary files from toolchain
 TC_SYSROOT=$(${CROSS_COMPILE}gcc -print-sysroot)
-cp -v ${TC_SYSROOT}/lib/ld-linux-aarch64.so.1 lib
-cp -v ${TC_SYSROOT}/lib64/libm.so.6 lib64
-cp -v ${TC_SYSROOT}/lib64/libresolv.so.2 lib64
-cp -v ${TC_SYSROOT}/lib64/libc.so.6 lib64
+cp ${TC_SYSROOT}/lib/ld-linux-aarch64.so.1 lib
+cp ${TC_SYSROOT}/lib64/libm.so.6 lib64
+cp ${TC_SYSROOT}/lib64/libresolv.so.2 lib64
+cp ${TC_SYSROOT}/lib64/libc.so.6 lib64
 #--------------------------------------
 
 # TODO: Make device nodes
@@ -134,9 +134,9 @@ make
 
 cp writer ${OUTDIR}/rootfs/home
 
-cp -v finder.sh ${OUTDIR}/rootfs/home
-cp -v finder-test.sh ${OUTDIR}/rootfs/home
-cp -rLv conf ${OUTDIR}/rootfs/home
+cp finder.sh ${OUTDIR}/rootfs/home
+cp finder-test.sh ${OUTDIR}/rootfs/home
+cp -rL conf ${OUTDIR}/rootfs/home
 
 cp autorun-qemu.sh ${OUTDIR}/rootfs/home
 #--------------------------------------
