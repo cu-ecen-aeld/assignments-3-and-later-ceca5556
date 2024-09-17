@@ -1,4 +1,11 @@
 #include "systemcalls.h"
+#include <syslog.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/wait.h>
 
 /**
  * @param cmd the command to execute with system()
@@ -16,6 +23,26 @@ bool do_system(const char *cmd)
  *   and return a boolean true if the system() call completed with success
  *   or false() if it returned a failure
 */
+    
+    if(cmd == NULL){
+    
+      printf("ERROR: input command is Null");
+      syslog(LOG_ERR,"ERROR: input command is Null");
+      return false;
+    
+    }
+    
+    
+    int err_code = system(cmd);
+    
+    if(err_code == -1){
+    
+      printf("ERROR: system call failed: %s", strerror(errno));
+      syslog(LOG_ERR,"ERROR: system call failed: %s", strerror(errno));
+      return false;    
+    
+    }
+    
 
     return true;
 }
@@ -59,9 +86,90 @@ bool do_exec(int count, ...)
  *
 */
 
+    pid_t c_pid, w_pid;
+    bool output;
+    
+    openlog("do_exec_func",0,LOG_USER);
+    
+    fflush(stdout);
+    c_pid = fork();
+    
+    if(c_pid == -1){// failed fork
+        //printf("ERROR: fork call failed: %s\n", strerror(errno));
+        syslog(LOG_ERR,"ERROR: fork call failed: %s\n", strerror(errno));
+        output = false;
+        //return false;
+    }
+    
+    else if(c_pid == 0){// child
+        //char** arg = command+1;
+      
+        int err_code = execv(command[0],command);
+      
+      
+        if(err_code == -1){
+      
+          //printf("ERROR: execv call failed: %s\n", strerror(errno));
+          
+          syslog(LOG_ERR,"ERROR: execv call failed: %s\n", strerror(errno));
+          //printf("child fail\n");
+          exit(EXIT_FAILURE);  
+      
+        }
+        //printf("child success\n");
+        exit(EXIT_SUCCESS);
+        
+    }
+    
+    else{// parent
+        //printf("parent waiting on child... child PID: %d\n", (int)c_pid);
+        
+        int wstatus;
+        w_pid = waitpid(c_pid,&wstatus,0); // wait for child
+        
+        if(w_pid == -1){
+        
+          //printf("ERROR: wait failed: %s\n", strerror(errno));
+          syslog(LOG_ERR,"ERROR: wait failed: %s\n", strerror(errno));
+          output = false;
+          //return false;  
+        
+        }
+        // check if w_pid matches
+        else if(w_pid == c_pid){
+        
+          // check if exited
+          if(WIFEXITED(wstatus)){
+        
+            // check status of exit
+            if(WEXITSTATUS(wstatus) == EXIT_SUCCESS){
+            
+              output = true;
+            
+            }
+            else if (WEXITSTATUS(wstatus) == EXIT_FAILURE){
+              
+              output = false;
+            
+            }
+            
+          else{
+          
+            output = false;
+          }
+            
+            
+        
+          }
+        }
+    
+    }
+    
     va_end(args);
-
-    return true;
+    closelog();
+    return output;
+    //return true;
+    
 }
 
 /**
@@ -93,7 +201,110 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
  *
 */
 
-    va_end(args);
+    openlog("do_exec_redirect_func",0,LOG_USER);
 
-    return true;
+    // open file
+    int fd = open(outputfile, O_WRONLY|O_TRUNC|O_CREAT,0644);
+    
+    if(fd == -1){
+    
+      printf("ERROR: file %s failed to open: %s",outputfile, strerror(errno));
+      syslog(LOG_ERR,"ERROR: file %s failed to open: %s",outputfile, strerror(errno));
+      return false;        
+    
+    }
+
+    //create fork
+    pid_t c_pid, w_pid;
+    bool output;
+    c_pid = fork();
+    
+    if(c_pid == -1){// failed fork
+    
+        printf("ERROR: fork call failed: %s", strerror(errno));
+        syslog(LOG_ERR,"ERROR: fork call failed: %s", strerror(errno));
+        output = false;
+        //return false;       
+    
+    } 
+    
+    else if(c_pid == 0){// child
+    
+        // redirect
+        int new_fd = dup2(fd,1);
+        
+        if(new_fd == -1){
+        
+          printf("ERROR: redirect failed: %s", strerror(errno));
+          syslog(LOG_ERR,"ERROR: redirect failed: %s", strerror(errno));
+          exit(EXIT_FAILURE);       
+        
+        }
+        
+        close(fd);
+    
+        // execute execv
+        //char** arg = command+1;
+        
+        int err_code = execv(command[0],command);
+        
+        
+        if(err_code == -1){
+        
+          printf("ERROR: execv call failed: %s", strerror(errno));
+          syslog(LOG_ERR,"ERROR: execv call failed: %s", strerror(errno));
+          exit(EXIT_FAILURE);
+        
+        }
+    
+    }
+    
+    else{// parent
+        //printf("parent waiting on child... child PID: %d\n", (int)c_pid);
+        
+        int wstatus;
+        w_pid = waitpid(c_pid,&wstatus,0); // wait for child
+        
+        if(w_pid == -1){
+        
+          //printf("ERROR: wait failed: %s\n", strerror(errno));
+          syslog(LOG_ERR,"ERROR: wait failed: %s\n", strerror(errno));
+          output = false;
+          //return false;  
+        
+        }
+        // check if w_pid matches
+        else if(w_pid == c_pid){
+        
+          // check if exited
+          if(WIFEXITED(wstatus)){
+        
+            // check status of exit
+            if(WEXITSTATUS(wstatus) == EXIT_SUCCESS){
+            
+              output = true;
+            
+            }
+            else if (WEXITSTATUS(wstatus) == EXIT_FAILURE){
+            
+              output = false;
+            
+            }
+            
+        else{
+        
+          output = false;
+        }
+            
+            
+        
+          }
+        }
+    
+    }
+     
+  
+    va_end(args);
+    closelog();
+    return output;
 }
