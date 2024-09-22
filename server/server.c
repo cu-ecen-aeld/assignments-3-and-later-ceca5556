@@ -18,6 +18,7 @@
 
 #include <syslog.h>
 
+#include <signal.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
@@ -45,7 +46,19 @@
 
 #define SYSTEM_ERROR    (-1)
 
+int sock_fd, accpt_fd, w_file_fd;
+
 /*
+*   @brief cleans up file descriptors and created file
+*
+*   @param[in] accept_fd
+*       - file descriptor of the accepted connection with client
+*
+*   @param[in] socket_fd
+*       - file descriptor of socket 
+*
+*   @param[in] file_fd
+*       - file descriptor of file
 */
 void cleanup(int accept_fd, int socket_fd, int file_fd){
 
@@ -65,13 +78,39 @@ void cleanup(int accept_fd, int socket_fd, int file_fd){
 
 }
 
+
 /*
+*   @brief signal handler for SIGINT and SIGTERM
+*/
+void app_shutdown(){
+
+    syslog(LOG_NOTICE, "Caught signal, exiting");
+
+    int rc = shutdown(sock_fd, SHUT_RDWR);
+    
+    if(rc == -1){
+
+        syslog(LOG_ERR, "ERROR: UNABLE TO GRACEFULLY SHUTDOWN SERVER: %s", strerror(errno));
+    }
+
+    cleanup(accpt_fd, sock_fd, w_file_fd);
+
+    exit(EXIT_SUCCESS);
+
+
+
+}
+
+/*
+*   @brief app entry point
 */
 int main(int argc, char** argv){
 
+    signal(SIGINT, app_shutdown);
+    signal(SIGTERM, app_shutdown);
+
     
-    int sock_fd, accpt_fd;
-    int w_file_fd;
+    // int sock_fd, accpt_fd, w_file_fd;
     int rc;
 
     struct addrinfo hints;
@@ -302,7 +341,7 @@ int main(int argc, char** argv){
         }
         free(rec_buf);
 
-        
+
         // send contents of file back to client
         // char *read_buf;
         char rs_buf[buff_size]; // read and send buffer
