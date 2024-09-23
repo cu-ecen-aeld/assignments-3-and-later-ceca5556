@@ -7,6 +7,8 @@
 *   @brief socket server code
 */
 
+
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -23,6 +25,9 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <arpa/inet.h>
+
+
+// #define USE_PRINT_DBUG
 
 #define IPV4            (0)
 #define IPV6            (1)
@@ -101,6 +106,7 @@ void app_shutdown(){
 
 }
 
+
 /*
 *   @brief app entry point
 */
@@ -130,9 +136,24 @@ int main(int argc, char** argv){
     // char *send_buf;
     // char *token;
 
-    client_addr_len = sizeof(client_addr);
+    bool daemon_flag = false;
 
+    // check arguments
+    int arg = 0;
+    while(arg < argc){
+        if(!(strcmp(argv[arg],"-d"))){
+            daemon_flag = true;
+
+            syslog(LOG_NOTICE,"daemon arg detected");
+        }
+
+        arg++;
+    }
+
+    client_addr_len = sizeof(client_addr);
+#ifdef USE_PRINT_DBUG
     printf("opening syslog\n");
+#endif
     openlog("aesdsocket: main", LOG_CONS|LOG_PERROR, LOG_USER);
     // FILE *w_file_fd = fopen(DEFAULT_FILE,'a+')
     w_file_fd = open(DEFAULT_FILE,O_RDWR|O_APPEND|O_CREAT, S_IRWXU|S_IRGRP|S_IROTH);
@@ -146,7 +167,9 @@ int main(int argc, char** argv){
 
 
     // get socket file descriptor
+#ifdef USE_PRINT_DBUG
     printf("getting socket file descriptor\n");
+#endif
     sock_fd = socket(SOCK_DOMAIN, SOCK_STREAM, 0);
     if(sock_fd == -1){
 
@@ -161,14 +184,18 @@ int main(int argc, char** argv){
     }
 
     // set up hints addrinfo
+#ifdef USE_PRINT_DBUG
     printf("setting up hints addrinfo struct\n");
+#endif
     memset(&hints, 0, sizeof(hints));
     hints.ai_flags = AI_PASSIVE;
     hints.ai_family = AI_FAM;
     hints.ai_socktype = SOCK_STREAM;
 
     // set up address info
+#ifdef USE_PRINT_DBUG
     printf("getting address info\n");
+#endif
     rc = getaddrinfo(NULL, SOCK_PORT, &hints, &server_info);
     if(rc != 0){
 
@@ -176,16 +203,14 @@ int main(int argc, char** argv){
         syslog(LOG_ERR, "getaddrinfor error: %s", strerror(rc));
         
         cleanup(0,sock_fd,w_file_fd);
-        // close(sock_fd);
-        // close(w_file_fd);
-        // remove(DEFAULT_FILE);
-
         return SYSTEM_ERROR;
 
     }
 
     // avoid address in use error
+#ifdef USE_PRINT_DBUG
     printf("setting socket options\n");
+#endif
     int option_val = 1;
     rc = setsockopt(sock_fd,SOL_SOCKET,SO_REUSEADDR,&option_val,sizeof(option_val));
     if(rc != 0) {
@@ -198,7 +223,9 @@ int main(int argc, char** argv){
     } 
 
     // bind the address to socket
+#ifdef USE_PRINT_DBUG
     printf("binding socket address\n");
+#endif
     rc = bind(sock_fd, server_info->ai_addr, server_info->ai_addrlen);
     
     // free server info 
@@ -212,6 +239,45 @@ int main(int argc, char** argv){
         return SYSTEM_ERROR;
 
     }    
+
+    // create daemon if specified
+    #ifdef USE_PRINT_DBUG
+        printf("creating daemon\n");
+    #endif
+    if(daemon_flag){
+
+        // pid_t c_pid = fork();
+
+        // if(c_pid == -1){// error
+        //     syslog(LOG_ERR, "error with fork: %s", strerror(errno));
+        //     cleanup(0,sock_fd,w_file_fd);    
+        //     return SYSTEM_ERROR;
+        // }
+        // else if(c_pid == 0){// child
+        //     syslog(LOG_NOTICE, "child process created");
+        //     pid_t s_pid = setsid();
+        //     chdir("/")
+        //     dup2(0,some_fd_dev_null)
+
+
+        // }
+        // else{// parent
+        //     exit();
+        // }
+        rc = daemon(0,0);
+        if(rc != 0){
+
+            syslog(LOG_ERR,"ERROR: daemon creation: %s", strerror(errno));
+
+        }
+        // else{
+        //     #ifdef USE_PRINT_DBUG
+        //         printf("daemon created", rec_bytes,rec_buf);
+        //     #endif
+        // }
+
+
+    }
 
     // continously check for connections
     while(1){
@@ -285,8 +351,9 @@ int main(int argc, char** argv){
             rec_bytes = recv(accpt_fd,rec_buf,buff_size, 0);
             tot_rec_bytes += rec_bytes;
             // printf("string %s will be saved\n",rec_buf);
-            printf("recieved %ld bytes, recieved string: %s\n", rec_bytes,rec_buf);
-
+            #ifdef USE_PRINT_DBUG
+                printf("recieved %ld bytes, recieved string: %s\n", rec_bytes,rec_buf);
+            #endif
 
             if(rec_bytes == -1){// error recieving
                 syslog(LOG_ERR, "error recieving bytes: %s", strerror(errno));
@@ -297,7 +364,7 @@ int main(int argc, char** argv){
                 
             }
             else if(rec_bytes == 0){// no data recieved, close connection
-                printf("no data\n");
+                // printf("no data\n");
                 syslog(LOG_NOTICE, "no data recieve, ending connection");
                 // close accepted connection
                 free(rec_buf);
@@ -308,29 +375,30 @@ int main(int argc, char** argv){
             else{// data recieved, store to file
                 if(rec_buf[rec_bytes-1] != (char)'\n'){
                 // if(strch())
-                    
-                    printf("Packet not yet finished, will read next chunk\n");
+                    #ifdef USE_PRINT_DBUG
+                        printf("Packet not yet finished, will read next chunk\n");
+                    #endif
                     done = false;
                 }
                 else{
 
                     // write_bytes += write(w_file_fd,"\n",strlen("\n"));
-                    printf("packet fully received\n");
+                    #ifdef USE_PRINT_DBUG
+                        printf("packet fully received\n");
+                    #endif
                     done = true;
 
                 }
                 write_bytes += write(w_file_fd,rec_buf,rec_bytes);
 
-                printf("%ld bytes/ %s / written to %s\n", write_bytes,rec_buf,DEFAULT_FILE);
+                #ifdef USE_PRINT_DBUG
+                    printf("%ld bytes/ %s / written to %s\n", write_bytes,rec_buf,DEFAULT_FILE);
+                #endif
 
                 if(write_bytes != tot_rec_bytes){
                     syslog(LOG_ERR, "error writing all bytes recieved to file");
                     // cleanup
                     cleanup(accpt_fd,sock_fd,w_file_fd);
-                    // close(accpt_fd);
-                    // close(sock_fd);
-                    // close(w_file_fd);
-                    // remove(DEFAULT_FILE);
                     free(rec_buf);
 
                     return SYSTEM_ERROR;
@@ -357,7 +425,10 @@ int main(int argc, char** argv){
             memset(rs_buf,0,buff_size);
             read_bytes = read(w_file_fd,rs_buf,buff_size);
             tot_read_bytes += read_bytes;
-            printf("%ld bytes read from file, %ld bytes total\n", read_bytes, tot_read_bytes);
+
+             #ifdef USE_PRINT_DBUG
+                printf("%ld bytes read from file, %ld bytes total\n", read_bytes, tot_read_bytes);
+            #endif
             // offset += read_bytes;
             if(read_bytes == 0 ){// nothing read therfore nothing to send
                 syslog(LOG_NOTICE, "no data read from file closing connection");
@@ -373,11 +444,15 @@ int main(int argc, char** argv){
             }
             else{// file read send data to client
 
-                printf("data read: %s\n", rs_buf);
+                #ifdef USE_PRINT_DBUG
+                    printf("data read: %s\n", rs_buf);
+                #endif
 
                 send_bytes = send(accpt_fd, rs_buf, read_bytes,0);
 
-                printf("bytes sent: %ld\n", send_bytes);
+                #ifdef USE_PRINT_DBUG
+                    printf("bytes sent: %ld\n", send_bytes);
+                #endif
 
                 if(send_bytes == -1){
                     syslog(LOG_ERR,"send error: %s",strerror(errno));
