@@ -121,7 +121,6 @@ int main(int argc, char** argv){
 
     struct addrinfo hints;
     struct addrinfo *server_info;
-    // struct sockaddr bind_addr, client_addr;
     struct sockaddr client_addr;
     socklen_t client_addr_len;
 
@@ -129,12 +128,9 @@ int main(int argc, char** argv){
     ssize_t tot_rec_bytes = 0;
     ssize_t tot_read_bytes = 0;
     ssize_t write_bytes = 0;
-    // ssize_t write_bytes;
-    // int offset = 0;
+    
     int buff_size;
     char *rec_buf;
-    // char *send_buf;
-    // char *token;
 
     bool daemon_flag = false;
 
@@ -151,9 +147,9 @@ int main(int argc, char** argv){
     }
 
     client_addr_len = sizeof(client_addr);
-#ifdef USE_PRINT_DBUG
-    printf("opening syslog\n");
-#endif
+    #ifdef USE_PRINT_DBUG
+        printf("opening syslog\n");
+    #endif
     openlog("aesdsocket: main", LOG_CONS|LOG_PERROR, LOG_USER);
     // FILE *w_file_fd = fopen(DEFAULT_FILE,'a+')
     w_file_fd = open(DEFAULT_FILE,O_RDWR|O_APPEND|O_CREAT, S_IRWXU|S_IRGRP|S_IROTH);
@@ -167,35 +163,33 @@ int main(int argc, char** argv){
 
 
     // get socket file descriptor
-#ifdef USE_PRINT_DBUG
-    printf("getting socket file descriptor\n");
-#endif
+    #ifdef USE_PRINT_DBUG
+        printf("getting socket file descriptor\n");
+    #endif
     sock_fd = socket(SOCK_DOMAIN, SOCK_STREAM, 0);
     if(sock_fd == -1){
 
         syslog(LOG_ERR,"socket error: %s", strerror(errno));
 
         cleanup(0,0,w_file_fd);
-        // close(w_file_fd);
-        // remove(DEFAULT_FILE);
 
         return SYSTEM_ERROR;
 
     }
 
     // set up hints addrinfo
-#ifdef USE_PRINT_DBUG
-    printf("setting up hints addrinfo struct\n");
-#endif
+    #ifdef USE_PRINT_DBUG
+        printf("setting up hints addrinfo struct\n");
+    #endif
     memset(&hints, 0, sizeof(hints));
     hints.ai_flags = AI_PASSIVE;
     hints.ai_family = AI_FAM;
     hints.ai_socktype = SOCK_STREAM;
 
     // set up address info
-#ifdef USE_PRINT_DBUG
-    printf("getting address info\n");
-#endif
+    #ifdef USE_PRINT_DBUG
+        printf("getting address info\n");
+    #endif
     rc = getaddrinfo(NULL, SOCK_PORT, &hints, &server_info);
     if(rc != 0){
 
@@ -208,9 +202,9 @@ int main(int argc, char** argv){
     }
 
     // avoid address in use error
-#ifdef USE_PRINT_DBUG
-    printf("setting socket options\n");
-#endif
+    #ifdef USE_PRINT_DBUG
+        printf("setting socket options\n");
+    #endif
     int option_val = 1;
     rc = setsockopt(sock_fd,SOL_SOCKET,SO_REUSEADDR,&option_val,sizeof(option_val));
     if(rc != 0) {
@@ -223,9 +217,9 @@ int main(int argc, char** argv){
     } 
 
     // bind the address to socket
-#ifdef USE_PRINT_DBUG
-    printf("binding socket address\n");
-#endif
+    #ifdef USE_PRINT_DBUG
+        printf("binding socket address\n");
+    #endif
     rc = bind(sock_fd, server_info->ai_addr, server_info->ai_addrlen);
     
     // free server info 
@@ -268,18 +262,20 @@ int main(int argc, char** argv){
         if(rc != 0){
 
             syslog(LOG_ERR,"ERROR: daemon creation: %s", strerror(errno));
+            cleanup(0,sock_fd,w_file_fd); 
+            return SYSTEM_ERROR;
 
         }
-        // else{
-        //     #ifdef USE_PRINT_DBUG
-        //         printf("daemon created", rec_bytes,rec_buf);
-        //     #endif
-        // }
+        
+        syslog(LOG_NOTICE,"daemon created");
 
 
     }
 
     // continously check for connections
+    #ifdef USE_PRINT_DBUG
+        printf("listening for connections\n");
+    #endif
     while(1){
 
         // listen for connections
@@ -340,17 +336,18 @@ int main(int argc, char** argv){
             cleanup(accpt_fd,sock_fd,w_file_fd);
             return SYSTEM_ERROR;
         }
-        // make sure no weird data in buffer
-        // memset(rec_buf,0,buff_size);
+        
         // continously checking for messages
         bool done = false;
         while(!done){
+
             // // make sure no weird data in buffer
             memset(rec_buf,0,buff_size);
+
             // check for messages
             rec_bytes = recv(accpt_fd,rec_buf,buff_size, 0);
             tot_rec_bytes += rec_bytes;
-            // printf("string %s will be saved\n",rec_buf);
+
             #ifdef USE_PRINT_DBUG
                 printf("recieved %ld bytes, recieved string: %s\n", rec_bytes,rec_buf);
             #endif
@@ -364,13 +361,12 @@ int main(int argc, char** argv){
                 
             }
             else if(rec_bytes == 0){// no data recieved, close connection
-                // printf("no data\n");
                 syslog(LOG_NOTICE, "no data recieve, ending connection");
-                // close accepted connection
+
+                // close accepted connection and free recieve buffer
                 free(rec_buf);
                 close(accpt_fd);
                 continue;
-                // break;
             }
             else{// data recieved, store to file
                 if(rec_buf[rec_bytes-1] != (char)'\n'){
@@ -382,7 +378,6 @@ int main(int argc, char** argv){
                 }
                 else{
 
-                    // write_bytes += write(w_file_fd,"\n",strlen("\n"));
                     #ifdef USE_PRINT_DBUG
                         printf("packet fully received\n");
                     #endif
@@ -407,16 +402,16 @@ int main(int argc, char** argv){
             
             }
         }
+        // free recieve buffer
         free(rec_buf);
 
 
         // send contents of file back to client
-        // char *read_buf;
         char rs_buf[buff_size]; // read and send buffer
         read_bytes = 0;
         send_bytes = 0;
         tot_read_bytes = 0;
-        // memset(rs_buf,0,buff_size);
+
         // set file offset back to begining
         lseek(w_file_fd, 0, SEEK_SET);
 
@@ -429,7 +424,7 @@ int main(int argc, char** argv){
              #ifdef USE_PRINT_DBUG
                 printf("%ld bytes read from file, %ld bytes total\n", read_bytes, tot_read_bytes);
             #endif
-            // offset += read_bytes;
+            
             if(read_bytes == 0 ){// nothing read therfore nothing to send
                 syslog(LOG_NOTICE, "no data read from file closing connection");
                 close(accpt_fd);
@@ -477,8 +472,8 @@ int main(int argc, char** argv){
 
     }
 
-    closelog();
     // cleanup
+    closelog();
     cleanup(accpt_fd,sock_fd,w_file_fd);
     return 0;
 }
