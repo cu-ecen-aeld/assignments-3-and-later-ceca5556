@@ -1,12 +1,12 @@
-INCLUDE_DIRS = #-I/usr/include/opencv4
+INCLUDE_DIRS = 
 LIB_DIRS = 
 TARGET = aesdsocket
-CROSS_COMPILE = aarch64-none-linux-gnu-
+CROSS_COMPILE = #aarch64-none-linux-gnu-
 CC=$(CROSS_COMPILE)gcc
 
 CDEFS=
-CFLAGS= -O0 -g -Wall -Werror #$(INCLUDE_DIRS) $(CDEFS)
-LIBS= -lpthread #-L/usr/lib -lopencv_core -lopencv_flann -lopencv_video -lrt
+CFLAGS= -O0 -g -Wall -Werror $(INCLUDE_DIRS) $(CDEFS)
+LIBS= -lpthread 
 
 HFILES= $(wildcard *.h)
 CFILES= $(wildcard *.c)
