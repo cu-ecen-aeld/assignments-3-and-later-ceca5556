@@ -28,6 +28,8 @@
 
 #include <pthread.h>
 
+#include <time.h>
+
 #include "server.h"
 #include "queue.h"
 
@@ -55,13 +57,19 @@
 #define DELETE_FILE     (true)
 #define STRG_AVILBL     (64)
 
+#define TSTAMP_LENGTH   (100) // stamp format: day(5 max) month(3) year(4) time(HH:MM:SS)(8)\n = 21 (not including any spaces,etc)
+#define UPDATE_TIME     (10) // in seconds
+// #define US_TO_S         (1e6) // micro seconds
+// #define MS_TO_S         (1e3) // milliseconds
+
 #define SYSTEM_ERROR    (-1)
 
 // struct connection_params_s{
 
 //     // int thread_ID;
 //     pthread_t thread_ID;
-//     pthread_mutex_t *file_mutex;
+    pthread_mutex_t file_mutex;
+    // pthread_mutex_t complete_mutex;
 
 //     int accpt_fd;
 //     int file_fd;
@@ -78,12 +86,16 @@
 
 // connection_params_t thread_list;
 
-TAILQ_HEAD(connection_head, connection_params_t) thread_list;
+TAILQ_HEAD(connection_head, connection_params_s) thread_list;
 // thread_list_t;
 
 
 
 int accpt_fd, sock_fd, w_file_fd;
+static sig_atomic_t sig_rec = false;
+
+pthread_t cleanup_thread_ID = 0;
+pthread_t timestamp_thread_ID = 0;
 
 /*
 *   @brief cleans up file descriptors and created file
@@ -99,10 +111,6 @@ int accpt_fd, sock_fd, w_file_fd;
 */
 static void cleanup(bool file_delete, int accept_fd, int socket_fd, int file_fd){
 
-    if(file_delete){
-        remove(DEFAULT_FILE);
-    }
-
     if(accept_fd){
         close(accept_fd);
     }
@@ -115,28 +123,182 @@ static void cleanup(bool file_delete, int accept_fd, int socket_fd, int file_fd)
         close(file_fd);
     }
 
+    if(file_delete){
+        remove(DEFAULT_FILE);
+    }
+
 }
 
+
+void signal_handler(){
+
+    // syslog(LOG_NOTICE, "Caught signal, exiting");
+    sig_rec = true;
+    shutdown(sock_fd, SHUT_RDWR);
+
+}
 
 /*
 *   @brief signal handler for SIGINT and SIGTERM
 */
 void app_shutdown(){
 
-    syslog(LOG_NOTICE, "Caught signal, exiting");
+    // syslog(LOG_NOTICE, "SHUTTING DOWN PROGRAM");
+    // sig_rec = true;
 
-    int rc = shutdown(sock_fd, SHUT_RDWR);
-    
-    if(rc == -1){
+    // pthread_kill(cleanup_thread_ID, SIGTERM);
+    pthread_join(cleanup_thread_ID, NULL);
+    pthread_kill(timestamp_thread_ID, SIGTERM);
+    pthread_join(timestamp_thread_ID, NULL);
 
-        syslog(LOG_ERR, "ERROR: UNABLE TO GRACEFULLY SHUTDOWN SERVER: %s", strerror(errno));
+    // int rc = shutdown(sock_fd, SHUT_RDWR);
+    int rc;
+    // if(rc == -1){
+
+    //     syslog(LOG_ERR, "ERROR: UNABLE TO GRACEFULLY SHUTDOWN SERVER: %s", strerror(errno));
+    // }
+
+    connection_params_t *cnnct_check = NULL;
+
+    while(!TAILQ_EMPTY(&thread_list)){
+        TAILQ_FOREACH(cnnct_check, &thread_list, next_connection){
+        // TAILQ_FOREACH_SAFE(cnnct_check, &thread_list, next_connection,cnnct_check->next_connection.tqe_next){
+
+            TAILQ_REMOVE(&thread_list, cnnct_check, next_connection);
+
+            rc = pthread_kill(cnnct_check->thread_ID, SIGTERM);
+            // pthread_kill(cnnct_check->thread_ID, SIGTERM);
+            if(rc != 0){
+                syslog(LOG_ERR,"ERROR SHUTTING DOWN, PTHREAD_KILL, ERROR NUM: %d",rc);
+                exit(EXIT_FAILURE);
+            }
+            
+            connection_cleanup(cnnct_check, NULL);
+
+            free(cnnct_check);
+            break;
+
+        }
+    }
+    cleanup(DELETE_FILE,0, sock_fd, w_file_fd);
+
+    // exit(EXIT_SUCCESS);
+
+}
+
+void *thread_complete_cleanup(){
+// static void thread_complete_cleanup(){
+
+    // connection_params_t *thread_params = sip->
+
+    // printf("thread id: %ld");
+    connection_params_t *cnnct_check = NULL;
+    // connection_params_t *to_free = NULL;
+    // int k = 5;
+    while(!sig_rec){
+        TAILQ_FOREACH(cnnct_check, &thread_list, next_connection){
+        // TAILQ_FOREACH_SAFE(cnnct_check, &thread_list, next_connection,cnnct_check->next_connection.tqe_next){
+
+            // if(to_free != NULL){
+            //     printf("to_free points to %p while cnnct_check to %p", to_free, cnnct_check);
+            //     free(to_free);
+            // }
+
+            // printf("thread ID%ld\n",cnnct_check->thread_ID);
+            if(cnnct_check->complete){
+                // cnnct_check->complete = false;
+                pthread_join(cnnct_check->thread_ID,NULL);
+                // printf("thread ID %ld, oID: %d, has completed %s\n",cnnct_check->thread_ID, cnnct_check->other_id,cnnct_check->success ? "successfully" : "in failure");
+                syslog(LOG_NOTICE,"thread ID %ld has completed %s\n",cnnct_check->thread_ID,cnnct_check->success ? "successfully" : "in failure");
+                TAILQ_REMOVE(&thread_list, cnnct_check, next_connection);
+                // usleep(10);
+                // pthread_mutex_unlock(cnnct_check->complete_mutex);
+                // to_free = cnnct_check;
+                free(cnnct_check);
+                break;
+                // cnnct_check = NULL;
+            }
+
+        }
+        // k--;
+        // usleep(100);
+    }
+    return NULL;
+    // return;
+}
+
+void *timestamp_thread(){
+
+    int rc;
+    ssize_t write_bytes;
+    // bool thread_error;
+    char timestamp_buf[TSTAMP_LENGTH] = "timestamp:";
+    // memset(timestamp_buf,0,TSTAMP_LENGTH);
+    int stamp_start = strlen(timestamp_buf);
+
+    time_t tme;
+    struct tm *loc_time;
+    // printf("start\n");
+    while(!sig_rec){
+        sleep(UPDATE_TIME);
+        tme = time(NULL);
+        loc_time = localtime(&tme);
+        if(loc_time == NULL){
+            syslog(LOG_ERR,"ERRROR timestamp thread, ID %ld: localtime function failed", timestamp_thread_ID);
+            // thread_error = true;
+            raise(SIGINT);
+            // exit(EXIT_FAILURE);
+
+        }
+        // printf("got local time\n");
+
+        rc = strftime(&timestamp_buf[stamp_start], TSTAMP_LENGTH, "%a, %d %b %Y %T %z", loc_time);
+        if(rc == 0){
+
+            syslog(LOG_ERR,"ERRROR timestamp thread, ID %ld: strftime returned 0", timestamp_thread_ID);
+            // thread_error = true;
+            raise(SIGINT);
+            // exit(EXIT_FAILURE);
+
+        }
+
+        timestamp_buf[strlen(timestamp_buf)] = '\n';
+
+        // printf("timestamp compplete\n");
+
+        rc = pthread_mutex_lock(&file_mutex);
+        if(rc != 0){
+            syslog(LOG_ERR,"ERRROR timestamp thread, ID %ld: mutex lock function failed: %s", timestamp_thread_ID,strerror(rc));
+            // thread_error = true;
+            raise(SIGINT);
+            // exit(EXIT_FAILURE);
+        }
+
+        write_bytes = write(w_file_fd,timestamp_buf,strlen(timestamp_buf));
+
+        rc = pthread_mutex_unlock(&file_mutex);
+        if(rc != 0){
+            syslog(LOG_ERR,"ERRROR timestamp thread, ID %ld: mutex unlock function failed: %s", timestamp_thread_ID,strerror(rc));
+            raise(SIGINT);
+            // exit(EXIT_FAILURE);
+        }
+
+        // printf(" compplete");
+        if(write_bytes != strlen(timestamp_buf)){
+
+            syslog(LOG_ERR, "ERRROR timestamp thread, ID %ld: not able to write all bytes recieved to file", timestamp_thread_ID);
+            raise(SIGINT);
+            // exit(EXIT_FAILURE);
+
+        }
+        // printf("write compplete\n");
+
+        // if(!sig_rec){
+            // sleep(UPDATE_TIME);
+        // }
     }
 
-    cleanup(DELETE_FILE,accpt_fd, sock_fd, w_file_fd);
-
-    exit(EXIT_SUCCESS);
-
-
+    return NULL;
 
 }
 
@@ -146,8 +308,9 @@ void app_shutdown(){
 */
 int main(int argc, char** argv){
 
-    signal(SIGINT, app_shutdown);
-    signal(SIGTERM, app_shutdown);
+    signal(SIGINT, signal_handler);
+    signal(SIGTERM, signal_handler);
+    // signal(SIGUSR1,thread_complete_cleanup);
 
     
     // int sock_fd, accpt_fd, w_file_fd;
@@ -170,18 +333,14 @@ int main(int argc, char** argv){
     // initialize thread link list
     TAILQ_INIT(&thread_list);
 
-    // thread_list.tqh_first->accpt_fd = 1;
-    // printf("accept fd set to %d",thread_list.accpt_fd);
-    // test(&thread_list.tqh_first);
-    // exit(1);
-
-    // create mutex
-    pthread_mutex_t file_mutex;
 
     #ifdef USE_PRINT_DBUG
         printf("opening syslog\n");
+        openlog("aesdsocket", LOG_CONS|LOG_PERROR, LOG_USER);
+    #else
+        openlog("aesdsocket", 0, LOG_USER);
+        // openlog("aesdsocket", LOG_CONS|LOG_PERROR, LOG_USER);
     #endif
-    openlog("aesdsocket: main", LOG_CONS|LOG_PERROR, LOG_USER);
 
 
     // check arguments
@@ -280,11 +439,12 @@ int main(int argc, char** argv){
 
     }    
 
-    // create daemon if specified
-    #ifdef USE_PRINT_DBUG
-        printf("creating daemon\n");
-    #endif
     if(daemon_flag){
+
+        // create daemon if specified
+        #ifdef USE_PRINT_DBUG
+            printf("creating daemon\n");
+        #endif
 
         rc = daemon(0,0);
         if(rc != 0){
@@ -309,13 +469,32 @@ int main(int argc, char** argv){
 
     }
 
-    // continously check for connections
     #ifdef USE_PRINT_DBUG
-        printf("listening for connections\n");
+        printf("creating cleanup thread\n");
     #endif
-    while(1){
 
-        // listen for connections
+    // create cleanup thread
+    rc = pthread_create(&cleanup_thread_ID,
+                        NULL,
+                        thread_complete_cleanup,
+                        NULL);
+    if(rc != 0){
+        syslog(LOG_ERR, "ERROR: pthread create error, thread cleanup,with error number: %d", rc);
+        return SYSTEM_ERROR;
+    }
+
+    // create timestamp thread
+    rc = pthread_create(&timestamp_thread_ID,
+                        NULL,
+                        timestamp_thread,
+                        NULL);
+    if(rc != 0){
+        syslog(LOG_ERR, "ERROR: pthread create error, time stamp cleanup,with error number: %d", rc);
+        return SYSTEM_ERROR;
+    }
+    // cleanup_thread_ID = thread;
+
+    // listen for connections
         rc = listen(sock_fd,BACKLOG_CNCTS);
         if(rc != 0){
 
@@ -325,10 +504,26 @@ int main(int argc, char** argv){
             cleanup(0,0,sock_fd,w_file_fd);            
             return SYSTEM_ERROR;
 
-        }  
+        }
+
+    pthread_t thread;
+
+    // continously check for connections
+    #ifdef USE_PRINT_DBUG
+        printf("listening for connections\n");
+    #endif
+    while(1){
+
+        // printf("sig_rec is %s\n",sig_rec ? "true" : "false");  
 
         // accept connection
         accpt_fd = accept(sock_fd,&client_addr,&client_addr_len);
+
+        // printf("sig_rec is %s\n",sig_rec ? "true" : "false");
+
+        if(sig_rec){
+            break;
+        }
 
         if(accpt_fd == -1){
 
@@ -342,6 +537,7 @@ int main(int argc, char** argv){
 
         // translate client addr to readable ip
         char cip_str[client_addr_len];
+        memset(cip_str,0,client_addr_len);
         #if(IP_FORMAT)// if ipv6
             const char* inet_ret = inet_ntop(client_addr.sa_family,(struct sockaddr_in6*)&client_addr,cip_str,client_addr_len);
         #else // if ipv4
@@ -359,158 +555,49 @@ int main(int argc, char** argv){
         // printf("%s\n",cip_str);
         syslog(LOG_NOTICE, "Accepted connection from %s",cip_str);
 
+        connection_params_t *cnct_thr_params = (connection_params_t*)malloc(sizeof(connection_params_t));
 
-        // // set up recieve buffer
-        // buff_size = STRG_AVILBL;
-        // rec_bytes = 0; 
+        if(cnct_thr_params == NULL){
+            syslog(LOG_ERR,"ERROR allocating enough memory for new thread parameters");
+            cleanup(0,accpt_fd,sock_fd,w_file_fd);
+            continue;
+        }
 
-        // rec_buf = (char*)malloc(buff_size);
-        // // char *token;
-        // if(rec_buf == NULL){
-        //     syslog(LOG_ERR,"failed to allocate %d to recieve buffer",buff_size);
-            
-        //     // cleanup
-        //     cleanup(0,accpt_fd,sock_fd,w_file_fd);
-        //     return SYSTEM_ERROR;
-        // }
+        cnct_thr_params->file_mutex = &file_mutex;
+        cnct_thr_params->accpt_fd = accpt_fd;
+        cnct_thr_params->file_fd = w_file_fd;
+        cnct_thr_params->success = false;
+        cnct_thr_params->complete = false;
+        cnct_thr_params->cip_str = (char*)malloc(client_addr_len);
+        strcpy(cnct_thr_params->cip_str,cip_str);
+        // memcpy(cnct_thr_params->cip_str,scip_str,client_addr_len);
+
+        // cnct_thr_params->cip_str = (const char*)&cip_str;
+
+        rc = pthread_create(&thread,
+                            NULL,
+                            connection_thread,
+                            (void*) cnct_thr_params);
+
+        if(rc != 0){
+            syslog(LOG_ERR, "ERROR: connection pthread create error (error num: %d), closing connection", rc);
+            cleanup(0,accpt_fd,0,0);    
+            continue;
+            // return SYSTEM_ERROR;
+        }
         
-        // // continously checking for messages
-        // bool done = false;
-        // while(!done){
+        cnct_thr_params->thread_ID=thread;
+        TAILQ_INSERT_TAIL(&thread_list, cnct_thr_params,next_connection);
 
-        //     // // make sure no weird data in buffer
-        //     memset(rec_buf,0,buff_size);
-
-        //     // check for messages
-        //     rec_bytes = recv(accpt_fd,rec_buf,buff_size, 0);
-        //     tot_rec_bytes += rec_bytes;
-
-        //     #ifdef USE_PRINT_DBUG
-        //         printf("recieved %ld bytes, recieved string: %s\n", rec_bytes,rec_buf);
-        //     #endif
-
-        //     if(rec_bytes == -1){// error recieving
-        //         syslog(LOG_ERR, "error recieving bytes: %s", strerror(errno));
-        //         // cleanup
-        //         cleanup(0,accpt_fd,sock_fd,w_file_fd);
-        //         free(rec_buf);
-        //         return SYSTEM_ERROR;
-                
-        //     }
-        //     else if(rec_bytes == 0){// no data recieved, close connection
-        //         syslog(LOG_NOTICE, "no data recieve, ending connection");
-
-        //         // close accepted connection and free recieve buffer
-        //         free(rec_buf);
-        //         close(accpt_fd);
-        //         continue;
-        //     }
-        //     else{// data recieved, store to file
-        //         if(rec_buf[rec_bytes-1] != (char)'\n'){
-        //         // if(strch())
-        //             #ifdef USE_PRINT_DBUG
-        //                 printf("Packet not yet finished, will read next chunk\n");
-        //             #endif
-        //             done = false;
-        //         }
-        //         else{
-
-        //             #ifdef USE_PRINT_DBUG
-        //                 printf("packet fully received\n");
-        //             #endif
-        //             done = true;
-
-        //         }
-        //         write_bytes += write(w_file_fd,rec_buf,rec_bytes);
-
-        //         #ifdef USE_PRINT_DBUG
-        //             printf("%ld bytes/ %s / written to %s\n", write_bytes,rec_buf,DEFAULT_FILE);
-        //         #endif
-
-        //         if(write_bytes != tot_rec_bytes){
-        //             syslog(LOG_ERR, "error writing all bytes recieved to file");
-        //             // cleanup
-        //             cleanup(0,accpt_fd,sock_fd,w_file_fd);
-        //             free(rec_buf);
-
-        //             return SYSTEM_ERROR;
-        //         }
-        //         // break;
-            
-        //     }
-        // }
-        // // free recieve buffer
-        // free(rec_buf);
-
-
-        // // send contents of file back to client
-        // char rs_buf[buff_size]; // read and send buffer
-        // read_bytes = 0;
-        // send_bytes = 0;
-        // tot_read_bytes = 0;
-
-        // // set file offset back to begining
-        // lseek(w_file_fd, 0, SEEK_SET);
-
-        // while(tot_read_bytes != write_bytes){
-        //     // read
-        //     memset(rs_buf,0,buff_size);
-        //     read_bytes = read(w_file_fd,rs_buf,buff_size);
-        //     tot_read_bytes += read_bytes;
-
-        //      #ifdef USE_PRINT_DBUG
-        //         printf("%ld bytes read from file, %ld bytes total\n", read_bytes, tot_read_bytes);
-        //     #endif
-            
-        //     if(read_bytes == 0 ){// nothing read therfore nothing to send
-        //         syslog(LOG_NOTICE, "no data read from file closing connection");
-        //         close(accpt_fd);
-        //         continue;
-        //     }
-        //     else if(read_bytes == -1){// error reading from file
-
-        //         syslog(LOG_ERR, "ERROR reading file: %s", strerror(errno));
-        //         // cleanup
-        //         cleanup(0,accpt_fd,sock_fd,w_file_fd);
-        //         return SYSTEM_ERROR;
-        //     }
-        //     else{// file read send data to client
-
-        //         #ifdef USE_PRINT_DBUG
-        //             printf("data read: %s\n", rs_buf);
-        //         #endif
-
-        //         send_bytes = send(accpt_fd, rs_buf, read_bytes,0);
-
-        //         #ifdef USE_PRINT_DBUG
-        //             printf("bytes sent: %ld\n", send_bytes);
-        //         #endif
-
-        //         if(send_bytes == -1){
-        //             syslog(LOG_ERR,"send error: %s",strerror(errno));
-
-        //             // cleanup
-        //             cleanup(0,accpt_fd,sock_fd,w_file_fd);
-        //             return SYSTEM_ERROR;
-        //         }
-        //         else if(send_bytes != read_bytes){
-        //             syslog(LOG_ERR,"failed to send all of the read bytes");
-
-        //             // cleanup
-        //             cleanup(0,accpt_fd,sock_fd,w_file_fd);
-        //             return SYSTEM_ERROR;
-        //         }
-
-
-        //     }
-        // }
-        // close(accpt_fd);
-        // syslog(LOG_NOTICE, "Closed connection from %s", cip_str);
 
     }
 
     // cleanup
+    // printf("SHUTTING DOWN\n");
+    syslog(LOG_NOTICE, "Caught signal, exiting");
+    app_shutdown();
     closelog();
-    cleanup(DELETE_FILE,accpt_fd,sock_fd,w_file_fd);
+    // cleanup(DELETE_FILE,accpt_fd,sock_fd,w_file_fd);
+    exit(EXIT_SUCCESS);
     return 0;
 }
