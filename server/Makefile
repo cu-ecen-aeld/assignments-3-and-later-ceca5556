@@ -5,7 +5,7 @@ CROSS_COMPILE = #aarch64-none-linux-gnu-
 CC=$(CROSS_COMPILE)gcc
 
 CDEFS=
-CFLAGS= -O0 -g -Wall -Werror $(INCLUDE_DIRS) $(CDEFS)
+CFLAGS= -O3 -g -Wall -Werror $(INCLUDE_DIRS) $(CDEFS)
 LIBS= -lpthread 
 
 HFILES= $(wildcard *.h)
