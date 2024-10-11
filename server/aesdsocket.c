@@ -111,6 +111,8 @@ pthread_t timestamp_thread_ID = 0;
 */
 static void cleanup(bool file_delete, int accept_fd, int socket_fd, int file_fd){
 
+    
+
     if(accept_fd){
         close(accept_fd);
     }
@@ -180,7 +182,7 @@ void app_shutdown(){
 
         }
     }
-    cleanup(DELETE_FILE,0, sock_fd, w_file_fd);
+    cleanup(DELETE_FILE,accpt_fd, sock_fd, w_file_fd);
 
     // exit(EXIT_SUCCESS);
 
@@ -320,6 +322,10 @@ int main(int argc, char** argv){
     struct addrinfo *server_info;
     struct sockaddr client_addr;
     socklen_t client_addr_len;
+
+    accpt_fd = 0;
+    sock_fd = 0;
+    w_file_fd = 0;
 
     client_addr_len = sizeof(client_addr);
 
@@ -522,6 +528,7 @@ int main(int argc, char** argv){
         // printf("sig_rec is %s\n",sig_rec ? "true" : "false");
 
         if(sig_rec){
+            accpt_fd = 0;
             break;
         }
 
@@ -554,6 +561,9 @@ int main(int argc, char** argv){
         }
         // printf("%s\n",cip_str);
         syslog(LOG_NOTICE, "Accepted connection from %s",cip_str);
+        if(sig_rec){
+            break;
+        }
 
         connection_params_t *cnct_thr_params = (connection_params_t*)malloc(sizeof(connection_params_t));
 
@@ -574,6 +584,7 @@ int main(int argc, char** argv){
 
         // cnct_thr_params->cip_str = (const char*)&cip_str;
 
+
         rc = pthread_create(&thread,
                             NULL,
                             connection_thread,
@@ -588,6 +599,8 @@ int main(int argc, char** argv){
         
         cnct_thr_params->thread_ID=thread;
         TAILQ_INSERT_TAIL(&thread_list, cnct_thr_params,next_connection);
+
+        syslog(LOG_NOTICE, "CREATED NEW CONNECTION THREAD WITH THREAD ID: %ld", cnct_thr_params->thread_ID);
 
 
     }
