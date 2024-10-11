@@ -92,7 +92,7 @@ TAILQ_HEAD(connection_head, connection_params_s) thread_list;
 
 
 int accpt_fd, sock_fd, w_file_fd;
-static sig_atomic_t sig_rec = false;
+static volatile sig_atomic_t sig_rec = false;
 
 pthread_t cleanup_thread_ID = 0;
 pthread_t timestamp_thread_ID = 0;
@@ -134,7 +134,7 @@ static void cleanup(bool file_delete, int accept_fd, int socket_fd, int file_fd)
 
 void signal_handler(){
 
-    // syslog(LOG_NOTICE, "Caught signal, exiting");
+    // syslog(LOG_NOTICE, "NOTICE: Caught signal, exiting");
     sig_rec = true;
     shutdown(sock_fd, SHUT_RDWR);
 
@@ -145,7 +145,7 @@ void signal_handler(){
 */
 void app_shutdown(){
 
-    // syslog(LOG_NOTICE, "SHUTTING DOWN PROGRAM");
+    // syslog(LOG_NOTICE, "NOTICE: SHUTTING DOWN PROGRAM");
     // sig_rec = true;
 
     // pthread_kill(cleanup_thread_ID, SIGTERM);
@@ -153,8 +153,9 @@ void app_shutdown(){
     pthread_kill(timestamp_thread_ID, SIGTERM);
     pthread_join(timestamp_thread_ID, NULL);
 
-    // int rc = shutdown(sock_fd, SHUT_RDWR);
+
     int rc;
+    // int rc = shutdown(sock_fd, SHUT_RDWR);
     // if(rc == -1){
 
     //     syslog(LOG_ERR, "ERROR: UNABLE TO GRACEFULLY SHUTDOWN SERVER: %s", strerror(errno));
@@ -162,18 +163,23 @@ void app_shutdown(){
 
     connection_params_t *cnnct_check = NULL;
 
+    // syslog(LOG_NOTICE,"releasing all threads");
+
     while(!TAILQ_EMPTY(&thread_list)){
         TAILQ_FOREACH(cnnct_check, &thread_list, next_connection){
         // TAILQ_FOREACH_SAFE(cnnct_check, &thread_list, next_connection,cnnct_check->next_connection.tqe_next){
 
             TAILQ_REMOVE(&thread_list, cnnct_check, next_connection);
 
-            rc = pthread_kill(cnnct_check->thread_ID, SIGTERM);
-            // pthread_kill(cnnct_check->thread_ID, SIGTERM);
+            // rc = pthread_kill(cnnct_check->thread_ID, SIGTERM);
+            rc = pthread_join(cnnct_check->thread_ID, NULL);
             if(rc != 0){
-                syslog(LOG_ERR,"ERROR SHUTTING DOWN, PTHREAD_KILL, ERROR NUM: %d",rc);
+                // syslog(LOG_ERR,"ERROR SHUTTING DOWN, PTHREAD_KILL, ERROR NUM: %d",rc);
+                syslog(LOG_ERR,"ERROR SHUTTING DOWN, PTHREAD_JOIN, ERROR NUM: %d",rc);
                 exit(EXIT_FAILURE);
             }
+
+            syslog(LOG_NOTICE,"thread ID %ld joined, status was %s/%s\n",cnnct_check->thread_ID,cnnct_check->complete ? "complete" : "incomplte",cnnct_check->success ? "successful" : "failure");
             
             connection_cleanup(cnnct_check, NULL);
 
@@ -193,28 +199,23 @@ void *thread_complete_cleanup(){
 
     // connection_params_t *thread_params = sip->
 
-    // printf("thread id: %ld");
+    // syslog(LOG_NOTICE,"clean thread id: %ld", cleanup_thread_ID);
     connection_params_t *cnnct_check = NULL;
     // connection_params_t *to_free = NULL;
     // int k = 5;
+    // syslog(LOG_NOTICE,"sig_rec is %s\n",sig_rec ? "true" : "false");
     while(!sig_rec){
         TAILQ_FOREACH(cnnct_check, &thread_list, next_connection){
+            // syslog(LOG_NOTICE,"sig_rec is %s\n",sig_rec ? "true" : "false");
         // TAILQ_FOREACH_SAFE(cnnct_check, &thread_list, next_connection,cnnct_check->next_connection.tqe_next){
 
-            // if(to_free != NULL){
-            //     printf("to_free points to %p while cnnct_check to %p", to_free, cnnct_check);
-            //     free(to_free);
-            // }
-
-            // printf("thread ID%ld\n",cnnct_check->thread_ID);
+            // syslog(LOG_NOTICE,"NOTICE: clean thread id: %ld", cleanup_thread_ID);
             if(cnnct_check->complete){
                 // cnnct_check->complete = false;
                 pthread_join(cnnct_check->thread_ID,NULL);
                 // printf("thread ID %ld, oID: %d, has completed %s\n",cnnct_check->thread_ID, cnnct_check->other_id,cnnct_check->success ? "successfully" : "in failure");
-                syslog(LOG_NOTICE,"thread ID %ld has completed %s\n",cnnct_check->thread_ID,cnnct_check->success ? "successfully" : "in failure");
+                syslog(LOG_NOTICE,"NOTICE: thread ID %ld has completed %s\n",cnnct_check->thread_ID,cnnct_check->success ? "successfully" : "in failure");
                 TAILQ_REMOVE(&thread_list, cnnct_check, next_connection);
-                // usleep(10);
-                // pthread_mutex_unlock(cnnct_check->complete_mutex);
                 // to_free = cnnct_check;
                 free(cnnct_check);
                 break;
@@ -224,12 +225,17 @@ void *thread_complete_cleanup(){
         }
         // k--;
         // usleep(100);
+    // printf("sig_rec is %s\n",sig_rec ? "true" : "false");  
     }
-    return NULL;
+    // return NULL;
+    syslog(LOG_NOTICE, "NOTICE: EXITING THREAD CLEAN UP, ID: %ld", cleanup_thread_ID);
+    pthread_exit(NULL);
     // return;
 }
 
 void *timestamp_thread(){
+
+    // syslog(LOG_NOTICE,"time stamp id: %ld", timestamp_thread_ID);
 
     int rc;
     ssize_t write_bytes;
@@ -293,14 +299,18 @@ void *timestamp_thread(){
             // exit(EXIT_FAILURE);
 
         }
+
+        syslog(LOG_NOTICE, "NOTICE: TIMESTAMP THREAD ID: %ld, WROTE: %s", timestamp_thread_ID, timestamp_buf);
         // printf("write compplete\n");
 
         // if(!sig_rec){
             // sleep(UPDATE_TIME);
         // }
+    // printf("sig_rec is %s\n",sig_rec ? "true" : "false");  
     }
 
-    return NULL;
+    syslog(LOG_NOTICE, "NOTICE: EXITING TIME STAMP UP, ID: %ld", timestamp_thread_ID);
+    pthread_exit(NULL);
 
 }
 
@@ -348,6 +358,7 @@ int main(int argc, char** argv){
         // openlog("aesdsocket", LOG_CONS|LOG_PERROR, LOG_USER);
     #endif
 
+    syslog(LOG_NOTICE, "NOTICE: STARTING APPLICATION");
 
     // check arguments
     int arg = 0;
@@ -403,8 +414,8 @@ int main(int argc, char** argv){
     rc = getaddrinfo(NULL, SOCK_PORT, &hints, &server_info);
     if(rc != 0){
 
-        // syslog(LOG_ERR, "getaddrinfor error: %s", gai_strerror(rc));
-        syslog(LOG_ERR, "getaddrinfor error: %s", strerror(rc));
+        syslog(LOG_ERR, "getaddrinfor error: %s", gai_strerror(rc));
+        // syslog(LOG_ERR, "getaddrinfor error: %s", strerror(rc));
         
         cleanup(0,0,sock_fd,w_file_fd);
         return SYSTEM_ERROR;
@@ -489,6 +500,8 @@ int main(int argc, char** argv){
         return SYSTEM_ERROR;
     }
 
+    syslog(LOG_NOTICE, "NOTICE: CREATED THREAD CLEAN UP, ID: %ld", cleanup_thread_ID);
+
     // create timestamp thread
     rc = pthread_create(&timestamp_thread_ID,
                         NULL,
@@ -498,8 +511,8 @@ int main(int argc, char** argv){
         syslog(LOG_ERR, "ERROR: pthread create error, time stamp cleanup,with error number: %d", rc);
         return SYSTEM_ERROR;
     }
-    // cleanup_thread_ID = thread;
 
+    syslog(LOG_NOTICE, "NOTICE: CREATED TIME STAMP THREAD,ID: %ld", timestamp_thread_ID);
     // listen for connections
         rc = listen(sock_fd,BACKLOG_CNCTS);
         if(rc != 0){
@@ -512,7 +525,7 @@ int main(int argc, char** argv){
 
         }
 
-    pthread_t thread;
+    // pthread_t thread;
 
     // continously check for connections
     #ifdef USE_PRINT_DBUG
@@ -560,10 +573,10 @@ int main(int argc, char** argv){
 
         }
         // printf("%s\n",cip_str);
-        syslog(LOG_NOTICE, "Accepted connection from %s",cip_str);
-        if(sig_rec){
-            break;
-        }
+        syslog(LOG_NOTICE, "NOTICE: Accepted connection from %s",cip_str);
+        // if(sig_rec){
+        //     break;
+        // }
 
         connection_params_t *cnct_thr_params = (connection_params_t*)malloc(sizeof(connection_params_t));
 
@@ -585,7 +598,7 @@ int main(int argc, char** argv){
         // cnct_thr_params->cip_str = (const char*)&cip_str;
 
 
-        rc = pthread_create(&thread,
+        rc = pthread_create(&cnct_thr_params->thread_ID,
                             NULL,
                             connection_thread,
                             (void*) cnct_thr_params);
@@ -597,17 +610,17 @@ int main(int argc, char** argv){
             // return SYSTEM_ERROR;
         }
         
-        cnct_thr_params->thread_ID=thread;
+        // cnct_thr_params->thread_ID=thread;
         TAILQ_INSERT_TAIL(&thread_list, cnct_thr_params,next_connection);
 
-        syslog(LOG_NOTICE, "CREATED NEW CONNECTION THREAD WITH THREAD ID: %ld", cnct_thr_params->thread_ID);
+        syslog(LOG_NOTICE, "NOTICE: CREATED NEW CONNECTION THREAD WITH THREAD ID: %ld", cnct_thr_params->thread_ID);
 
 
     }
 
     // cleanup
     // printf("SHUTTING DOWN\n");
-    syslog(LOG_NOTICE, "Caught signal, exiting");
+    syslog(LOG_NOTICE, "NOTICE: Caught signal, exiting");
     app_shutdown();
     closelog();
     // cleanup(DELETE_FILE,accpt_fd,sock_fd,w_file_fd);
