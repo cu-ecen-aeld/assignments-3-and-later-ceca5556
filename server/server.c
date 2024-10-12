@@ -2,9 +2,9 @@
 *   @file server.c
 *
 *   @author Cedric Camacho
-*   @date Sep 18, 2024
+*   @date Oct 5, 2024
 *
-*   @brief socket server code
+*   @brief connection thread code
 */
 
 
@@ -72,28 +72,16 @@ void *connection_thread(void* thread_params){
     char *rec_buf;
     bool thread_error = false;
 
-    // from thread_params
-    // pthread_mutex_t *file_mutex = connection_p->file_mutex;
-    // pthread_mutex_t *complete_mutex = connection_p->complete_mutex;
-
-    // bool write_start = false;
-    // bool write_finish = false;
-    // bool read_start = false;
-    // bool read_finish = false;
-
-    // openlog("aesdsocket: thread function", LOG_CONS|LOG_PERROR, LOG_USER);
 
     // set up recieve buffer
     // connection_p->rec_buf = (char*)malloc(buff_size);
     rec_buf = (char*)malloc(buff_size);
 
-    // char *token;
     // if(connection_p->rec_buf == NULL){
     if(rec_buf == NULL){
         syslog(LOG_ERR,"ERROR thread ID %ld: failed to allocate %d bytes to the recieve buffer",connection_p->thread_ID,buff_size);
         thread_error = true;
         connection_cleanup(connection_p, thread_error);
-        // raise(SIGUSR1);
         return NULL;
     }
 
@@ -103,17 +91,11 @@ void *connection_thread(void* thread_params){
     memset(rec_buf,0,buff_size);
     while(!done){
 
-        // // make sure no weird data in buffer
-
         // check for messages
         // rec_bytes = recv(connection_p->accpt_fd,&connection_p->rec_buf[tot_rec_bytes],buff_size, 0);
         rec_bytes = recv(connection_p->accpt_fd,&rec_buf[tot_rec_bytes],buff_size, 0);
         tot_rec_bytes += rec_bytes;
 
-        #ifdef USE_PRINT_DBUG
-            // printf("recieved %ld bytes now have %ld total bytes, recieved string: %s\n", rec_bytes,tot_rec_bytes,connection_p->rec_buf);
-            printf("recieved %ld bytes now have %ld total bytes, recieved string: %s\n", rec_bytes,tot_rec_bytes,rec_buf);
-        #endif
 
         if(rec_bytes == -1){// error recieving
             syslog(LOG_ERR, "ERRROR thread ID %ld: recieve: %s", connection_p->thread_ID,strerror(errno));
@@ -129,27 +111,18 @@ void *connection_thread(void* thread_params){
         else{// data recieved, store to file
             // if(connection_p->rec_buf[tot_rec_bytes-1] != (char)'\n'){
             if(rec_buf[tot_rec_bytes-1] != (char)'\n'){
-                #ifdef USE_PRINT_DBUG
-                    printf("Packet not yet finished, will re-connect with bigger buffer\n");
-                #endif
 
                 // connection_p->rec_buf = realloc(connection_p->rec_buf,buff_size+tot_rec_bytes);
                 rec_buf = realloc(rec_buf,buff_size+tot_rec_bytes);
                 // if(connection_p->rec_buf == NULL){
                 if(rec_buf == NULL){
                     syslog(LOG_ERR,"ERROR thread ID %ld: failed to re-allocate %d bytes to the recieve buffer",connection_p->thread_ID,buff_size);
-
                     thread_error = true;
-                    // return thread_params;
                     break;
                 }
 
             }
             else{
-
-                #ifdef USE_PRINT_DBUG
-                    printf("packet fully received\n");
-                #endif
 
                 done = true;
 
@@ -249,9 +222,6 @@ void *connection_thread(void* thread_params){
 
         tot_read_bytes += read_bytes;
 
-        #ifdef USE_PRINT_DBUG
-            printf("%ld bytes read from file, %ld bytes total\n", read_bytes, tot_read_bytes);
-        #endif
         
         if(read_bytes == 0 ){// nothing read therfore nothing to send
             syslog(LOG_NOTICE, "NOTICE: all data read, closing connection");
@@ -269,6 +239,7 @@ void *connection_thread(void* thread_params){
 
             #ifdef DEBUG_LOGS
 
+                syslog(LOG_INFO, "INFO: CONNECTION THREAD ID: %ld, bytes read: %ld", connection_p->thread_ID, read_bytes);
                 syslog(LOG_INFO, "INFO: CONNECTION THREAD ID: %ld, data read: %s", connection_p->thread_ID, rs_buf);
 
             #endif
@@ -304,14 +275,12 @@ void *connection_thread(void* thread_params){
     rc  = pthread_mutex_unlock(connection_p->file_mutex);
     if(rc != 0){
         syslog(LOG_ERR,"ERRROR thread ID %ld: mutex unlock function failed: %s", connection_p->thread_ID,strerror(rc));
+        thread_error = true;
         connection_cleanup(connection_p, thread_error);
         exit(EXIT_FAILURE);
     }
 
     
     connection_cleanup(connection_p, thread_error);
-
-    // raise(SIGUSR1);
-    // return thread_params;
     return NULL;
 }
