@@ -1,12 +1,13 @@
 INCLUDE_DIRS = 
 LIB_DIRS = 
-TARGET = aesdsocket
-CROSS_COMPILE = #aarch64-none-linux-gnu-
-CC=$(CROSS_COMPILE)gcc
+TARGET ?= aesdsocket
+CROSS_COMPILE = aarch64-none-linux-gnu-
+CC ?= $(CROSS_COMPILE)gcc
 
 CDEFS=
-CFLAGS= -O3 -g -Wall -Werror $(INCLUDE_DIRS) $(CDEFS)
-LIBS= -lpthread 
+CFLAGS ?= -O3 -g -Wall -Werror $(INCLUDE_DIRS) $(CDEFS)
+# LIBS= -lpthread
+LDFLAGS ?= -lpthread -lrt
 
 HFILES= $(wildcard *.h)
 CFILES= $(wildcard *.c)
@@ -28,4 +29,5 @@ clean:
 
 
 $(TARGET): $(OBJS)
-	$(CC) $(OBJS) $(CFLAGS) $(LIBS) -o $@
+	$(CC) $(OBJS) $(CFLAGS) $(LDFLAGS) -o $@
+#	$(CC) $(OBJS) $(CFLAGS) $(LIBS) -o $@
