@@ -15,10 +15,12 @@
 #endif
 
 #include "aesd-circular-buffer.h"
+#include <stdio.h>
 
 static uint8_t update_offset(uint8_t offset){
 
-    offset = (offset + 1) & (AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED - 1);
+    // offset = (offset + 1) & (AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED - 1);
+    offset = (offset + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
 
     return offset;
     
@@ -40,7 +42,30 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
     /**
     * TODO: implement per description
     */
-    return NULL;
+
+    uint8_t current_entry = buffer->out_offs;
+
+    while(1){
+        if(char_offset < buffer->entry[current_entry].size){ //check offset compared to size
+        // if(char_offset < buffer->entry[buffer->out_offs].size){
+            *entry_offset_byte_rtn = char_offset;
+            break;
+        }
+        else{// go to next entry
+            char_offset -=  buffer->entry[current_entry].size; // subtract offset from already checked
+            current_entry = update_offset(current_entry);
+            // char_offset -=  buffer->entry[buffer->out_offs].size; // subtract offset from already checked
+            // buffer->out_offs = update_offset(buffer->out_offs);
+        }
+
+        if(current_entry == buffer->in_offs){ // means no more data available to check
+        // if(buffer->out_offs == buffer->in_offs){
+            return NULL;
+        }
+    }
+
+    // return &buffer->entry[buffer->out_offs];
+    return &buffer->entry[current_entry];
 }
 
 /**
@@ -56,11 +81,13 @@ void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const s
     * TODO: implement per description
     */
     if(buffer->full){
-        buffer->out_offs = update_offset(buffer->in_offs);
+        buffer->out_offs = update_offset(buffer->out_offs);
         buffer->full = false;
     }
 
-    buffer->entry[buffer->in_offs] = add_entry;
+    buffer->entry[buffer->in_offs] = *add_entry;
+
+    // printf("\n\n NOTICE: buffer has added: %s to offset %d\n\n",buffer->entry[buffer->in_offs].buffptr,buffer->in_offs);
 
     buffer->in_offs = update_offset(buffer->in_offs);
     if(buffer->in_offs == buffer->out_offs){
