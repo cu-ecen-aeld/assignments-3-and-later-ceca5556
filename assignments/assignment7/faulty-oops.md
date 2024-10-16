@@ -52,10 +52,12 @@ Code: d2800001 d2800000 d503233f d50323bf (b900003f)
 ## Analysis
 The very first line of the error message states the cause of the error:
 > Unable to handle kernel NULL pointer dereference at virtual address 0000000000000000
+
 This essentially means that the system attempted to dereference an uninitialized pointer which led to the equivalent of a SEGFAULT in userspace occured.
 
 Several lines down from the first message the output shows:
 > CPU: 0 PID: 153
+
 This is the Process ID that was running the code and which CPU it was running on. This can be useful in differerntiating between all the different processes running on a system.
 
 A couple of lines below that is the program counter (pc):
