@@ -62,6 +62,7 @@ This is the Process ID that was running the code and which CPU it was running on
 
 A couple of lines below that is the program counter (pc):
 > pc : faulty_write+0x10/0x20 [faulty]
+
 This is the address of the instruction that caused the error. In this case, it shows that the instruction was called within a function called `faulty_write`.
 
 Right below is the link register, which seems to point to a sort of write function/instruction: 
