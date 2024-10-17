@@ -1,7 +1,7 @@
 INCLUDE_DIRS = #-I/usr/include/opencv4
 LIB_DIRS = 
 TARGET = aesdsocket
-CROSS_COMPILE = aarch64-none-linux-gnu-
+CROSS_COMPILE = #aarch64-none-linux-gnu-
 CC=$(CROSS_COMPILE)gcc
 
 CDEFS=
