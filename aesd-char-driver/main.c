@@ -32,6 +32,9 @@ int aesd_open(struct inode *inode, struct file *filp)
     /**
      * TODO: handle open
      */
+    struct aesd_dev *tmp_dev;
+    tmp_dev = container_of(inode->i_cdev, struct aesd_dev, cdev);
+    filp->private_data = tmp_dev;
     return 0;
 }
 
@@ -41,6 +44,10 @@ int aesd_release(struct inode *inode, struct file *filp)
     /**
      * TODO: handle release
      */
+    /* 
+    * as of now dont need to do anything due to filp->private_data 
+    * allocated in init module
+    */
     return 0;
 }
 
@@ -52,6 +59,47 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     /**
      * TODO: handle read
      */
+    
+    int rc = 0;
+    int tmp_off_byte = 0;
+    int bytes_left = 0;
+    struct aesd_dev *tmp_dev = NULL;
+    // struct aesd_buffer_entry *buf_entry = NULL;
+
+    tmp_dev = (struct aesd_dev*)filp->private_data;
+
+    rc = mutex_lock_interruptible(&tmp_dev->buf_lock);
+    if(rc){
+        PDEBUG("ERROR: mutex lock failed with code: %d", rc);
+        goto end;
+    }
+
+    tmp_dev->buf_entry = aesd_circular_buffer_find_entry_offset_for_fpos(tmp_dev->circ_buf
+                                                                         *f_pos,
+                                                                         &tmp_off_byte);
+
+    if(!tmp_dev->buf_entry){
+        goto mutex_cleanup;
+    }
+    
+    bytes_left = copy_to_user(buf,tmp_dev->buf_entry->buffptr,tmp_dev->buf_entry->size);
+
+    PDEBUG("DEBUG: %d out of %d bytes read from buffer", tmp_dev->buf_entry->size - bytes_left, tmp_dev->buf_entry->size );
+
+    if(!bytes_left){
+        retval = bytes_left;
+    }
+    else{
+        goto mutex_cleanup;
+    }
+
+    *f_pos += bytes_left;
+
+
+ mutex_cleanup:
+    mutex_unlock(&tmp_dev->buf_lock);
+
+ end: 
     return retval;
 }
 
