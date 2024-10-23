@@ -71,6 +71,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     rc = mutex_lock_interruptible(&tmp_dev->buf_lock);
     if(rc){
         PDEBUG("ERROR: mutex lock failed with code: %d", rc);
+        retval = -rc;
         goto end;
     }
 
@@ -78,26 +79,32 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
                                                                          *f_pos,
                                                                          &tmp_off_byte);
 
+    mutex_unlock(&tmp_dev->buf_lock);
+
     if(!tmp_dev->buf_entry){
-        goto mutex_cleanup;
+        retval = 0;
+        goto end;
     }
     
     bytes_left = copy_to_user(buf,tmp_dev->buf_entry->buffptr,tmp_dev->buf_entry->size);
 
-    PDEBUG("DEBUG: %d out of %d bytes read from buffer", tmp_dev->buf_entry->size - bytes_left, tmp_dev->buf_entry->size );
+    bytes_read = tmp_dev->buf_entry->size - bytes_left;
+
+    PDEBUG("DEBUG: %d out of %d bytes read from buffer", bytes_read, tmp_dev->buf_entry->size );
 
     if(!bytes_left){
-        retval = bytes_left;
+        retval = tmp_dev->buf_entry->size;
     }
     else{
-        goto mutex_cleanup;
+        PDEBUG("ERROR: could not read all necessary bytes from buffer", bytes_read, tmp_dev->buf_entry->size );
+        // goto mutex_cleanup;
     }
 
-    *f_pos += bytes_left;
+    *f_pos += tmp_dev->buf_entry->size - tmp_off_byte;
 
 
- mutex_cleanup:
-    mutex_unlock(&tmp_dev->buf_lock);
+//  mutex_cleanup:
+    // mutex_unlock(&tmp_dev->buf_lock);
 
  end: 
     return retval;
@@ -111,8 +118,95 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     /**
      * TODO: handle write
      */
+    
+    int rc = 0;
+    int tmp_off_byte = 0;
+    int bytes_left = 0;
+    struct aesd_dev *tmp_dev = NULL;
+
+    // define temporary aesd_dev struct
+    tmp_dev = (struct aesd_dev*)filp->private_data;
+
+    // check size of buffer
+    if(!tmp_dev->buf_entry->size){// if zero -> hasn't been allocated
+
+        tmp_dev->buf_entry->buffptr = kmalloc(count, GFP_KERNEL);
+
+        if(!tmp_dev->buf_entry->buffptr){
+
+            PDEBUG("ERROR: unable to allocate enough memory");
+            retval = -ENOMEM;
+            // goto mutex_cleanup;
+            goto end;
+
+        }
+
+
+    }
+    else{ // if non zero, has been allocated before, realloc to increase size
+
+        tmp_dev->buf_entry->buffptr = krealloc(tmp_dev->buf_entry->buffptr, tmp_dev->buf_entry->size + count, GFP_KERNEL);
+
+        if(!tmp_dev->buf_entry->buffptr){
+
+            PDEBUG("ERROR: unable to allocate enough memory");
+            retval = -ENOMEM;
+            // goto mutex_cleanup;
+            goto end;
+
+        }
+
+    }
+
+    // copy user buffer to entry
+    rc = copy_from_user(tmp_dev->buf_entry->buffptr[tmp_dev->buf_entry->size], buf, count);
+    if(rc){
+
+        PDEBUG("ERROR: unable to copy from user buffer");
+        retval = -EFAULT;
+        goto end;
+
+    }
+
+    tmp_dev->buf_entry->size += count;
+    retval = count;
+
+    // check last character of buffer
+    if(tmp_dev->buf_entry->buffptr[tmp_dev->buf_entry->size - 1] == (char)'\n'){
+
+        // lock circular buffer
+        rc = mutex_lock_interruptible(&tmp_dev->buf_lock);
+        if(rc){
+            PDEBUG("ERROR: mutex lock failed with code: %d", rc);
+            retval = -rc;
+            goto end;
+        }
+
+        // write to circular buffer
+        aesd_circular_buffer_add_entry(&tmp_dev->circ_buf, tmp_dev->buf_entry);
+
+        mutex_unlock(&tmp_dev->buf_lock);
+
+        // free buffer entry
+        tmp_dev->buf_entry->size = 0;
+        kfree(tmp_dev->buf_entry->buffptr);
+
+
+    }
+
+
+
+
+//  mutex_cleanup:
+//     mutex_unlock(&tmp_dev->buf_lock);
+
+//  free_alloc:
+//     kfree(tmp_dev->buf_entry->buffptr);
+
+ end: 
     return retval;
 }
+
 struct file_operations aesd_fops = {
     .owner =    THIS_MODULE,
     .read =     aesd_read,
