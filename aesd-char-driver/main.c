@@ -132,6 +132,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     int tmp_off_byte = 0;
     int bytes_left = 0;
     struct aesd_dev *tmp_dev = NULL;
+    char *local_tmp_buf;
 
     // define temporary aesd_dev struct
     tmp_dev = (struct aesd_dev*)filp->private_data;
@@ -158,6 +159,7 @@ PDEBUG("malloc call");
             // goto end;
 
         }
+        local_tmp_buf = tmp_dev->buf_entry->buffptr;
 PDEBUG("malloc call passed");
 
 
@@ -176,6 +178,7 @@ PDEBUG("realloc call");
             // goto end;
 
         }
+        local_tmp_buf = tmp_dev->buf_entry->buffptr + tmp_dev->buf_entry->size;
 PDEBUG("realloc call passed");
 
     }
@@ -184,7 +187,8 @@ PDEBUG("realloc call passed");
 PDEBUG(" buffer size before: %ld",tmp_dev->buf_entry->size);
 
     // copy user buffer to entry
-    rc = copy_from_user(tmp_dev->buf_entry->buffptr, buf, count);
+    // rc = copy_from_user(tmp_dev->buf_entry->buffptr[tmp_dev->buf_entry->size], buf, count); // not working???
+    rc = copy_from_user(local_tmp_buf, buf, count);
     if(rc){
 
         PDEBUG("ERROR: unable to copy from user buffer");
