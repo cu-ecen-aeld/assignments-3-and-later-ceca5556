@@ -147,46 +147,60 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     // check size of buffer
     if(!tmp_dev->buf_entry->size){// if zero -> hasn't been allocated
 
-        tmp_dev->buf_entry->buffptr = kmalloc(count, GFP_KERNEL);
+PDEBUG("malloc call");
+        tmp_dev->buf_entry->buffptr = kmalloc(count*sizeof(char), GFP_KERNEL);
 
         if(!tmp_dev->buf_entry->buffptr){
 
             PDEBUG("ERROR: unable to allocate enough memory");
             retval = -ENOMEM;
-            // goto mutex_cleanup;
-            goto end;
+            goto mutex_cleanup;
+            // goto end;
 
         }
+PDEBUG("malloc call passed");
+
 
 
     }
     else{ // if non zero, has been allocated before, realloc to increase size
 
+PDEBUG("realloc call");
         tmp_dev->buf_entry->buffptr = krealloc(tmp_dev->buf_entry->buffptr, tmp_dev->buf_entry->size + count, GFP_KERNEL);
 
         if(!tmp_dev->buf_entry->buffptr){
 
             PDEBUG("ERROR: unable to allocate enough memory");
             retval = -ENOMEM;
-            // goto mutex_cleanup;
-            goto end;
+            goto mutex_cleanup;
+            // goto end;
 
         }
+PDEBUG("realloc call passed");
 
     }
 
+// PDEBUG(" buffer pointer: %p",tmp_dev->buf_entry->buffptr);
+PDEBUG(" buffer size before: %ld",tmp_dev->buf_entry->size);
+
     // copy user buffer to entry
-    rc = copy_from_user(tmp_dev->buf_entry->buffptr[tmp_dev->buf_entry->size], buf, count);
+    rc = copy_from_user(tmp_dev->buf_entry->buffptr, buf, count);
     if(rc){
 
         PDEBUG("ERROR: unable to copy from user buffer");
         retval = -EFAULT;
-        goto end;
+        goto mutex_cleanup;
+        // goto end;
 
     }
 
+PDEBUG("copy from user passed");
+
     tmp_dev->buf_entry->size += count;
     retval = count;
+
+PDEBUG(" buffer size after: %ld",tmp_dev->buf_entry->size);
+PDEBUG(" buffer content: %s",tmp_dev->buf_entry->buffptr);
 
     // check last character of buffer
     if(tmp_dev->buf_entry->buffptr[tmp_dev->buf_entry->size - 1] == (char)'\n'){
@@ -200,7 +214,10 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         // }
 
         // write to circular buffer
-        aesd_circular_buffer_add_entry(&tmp_dev->circ_buf, tmp_dev->buf_entry);
+PDEBUG("placing %s into circular buffer", tmp_dev->buf_entry->buffptr);
+
+        // aesd_circular_buffer_add_entry(&tmp_dev->circ_buf, tmp_dev->buf_entry);
+// PDEBUG("circ buf now has %s", &tmp_dev->circ_buf);   
 
         // mutex_unlock(&tmp_dev->device_lock);
 
@@ -208,6 +225,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         tmp_dev->buf_entry->size = 0;
         kfree(tmp_dev->buf_entry->buffptr);
         tmp_dev->buf_entry->buffptr = NULL;
+PDEBUG("entry buffer freed");
 
 
     }
@@ -215,7 +233,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 
 
 
-//  mutex_cleanup:
+ mutex_cleanup:
     mutex_unlock(&tmp_dev->device_lock);
 
 //  free_alloc:
