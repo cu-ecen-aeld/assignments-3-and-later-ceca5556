@@ -12,10 +12,10 @@
 #include <linux/string.h>
 #else
 #include <string.h>
+#include <stdio.h>
 #endif
 
 #include "aesd-circular-buffer.h"
-#include <stdio.h>
 
 static uint8_t update_offset(uint8_t offset){
 
