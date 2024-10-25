@@ -100,15 +100,15 @@ static void cleanup(bool file_delete, int accept_fd, int socket_fd, int file_fd)
 
     
 
-    if(accept_fd){
+    if(accept_fd > 0){
         close(accept_fd);
     }
 
-    if(socket_fd){
+    if(socket_fd > 0){
         close(socket_fd);
     }
 
-    if(file_fd){
+    if(file_fd > 0){
         close(file_fd);
     }
 
@@ -468,7 +468,7 @@ int main(int argc, char** argv){
 
     // syslog(LOG_NOTICE, "NOTICE: CREATED THREAD CLEAN UP, ID: %ld", cleanup_thread_ID);
 
-    // create timestamp thread
+    create timestamp thread
     rc = pthread_create(&timestamp_thread_ID,
                         NULL,
                         timestamp_thread,
@@ -516,6 +516,7 @@ int main(int argc, char** argv){
             
             // cleanup
             // cleanup(0,0,sock_fd,w_file_fd); 
+            accpt_fd = 0;
             continue;           
             // return SYSTEM_ERROR;
 
