@@ -61,8 +61,9 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
      */
     
     int rc = 0;
-    int tmp_off_byte = 0;
+    ssize_t tmp_off_byte = 0;
     int bytes_left = 0;
+    int bytes_read = 0;
     struct aesd_dev *tmp_dev = NULL;
     // struct aesd_buffer_entry *buf_entry = NULL;
 
@@ -75,7 +76,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
         goto end;
     }
 
-    tmp_dev->buf_entry = aesd_circular_buffer_find_entry_offset_for_fpos(tmp_dev->circ_buf
+    tmp_dev->buf_entry = aesd_circular_buffer_find_entry_offset_for_fpos(&tmp_dev->circ_buf,
                                                                          *f_pos,
                                                                          &tmp_off_byte);
 
@@ -105,13 +106,14 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 
 
  mutex_cleanup:
-    rc = mutex_unlock(&tmp_dev->device_lock);
-    if(rc){
+    mutex_unlock(&tmp_dev->device_lock);
+    // rc = mutex_unlock(&tmp_dev->device_lock);
+    // if(rc){
 
-        PDEBUG("ERROR: could not read all necessary bytes from buffer", bytes_read, tmp_dev->buf_entry->size );
-        retval = -EFAULT;
+    //     PDEBUG("ERROR: could not read all necessary bytes from buffer", bytes_read, tmp_dev->buf_entry->size );
+    //     retval = -EFAULT;
 
-    }
+    // }
 
  end: 
     return retval;
@@ -266,7 +268,7 @@ int aesd_init_module(void)
     aesd_device.buf_entry = kmalloc(sizeof(struct aesd_buffer_entry), GFP_KERNEL);
     aesd_device.buf_entry->size = 0;
     aesd_circular_buffer_init(&aesd_device.circ_buf);
-    mutex_init(aesd_device.device_lock);
+    mutex_init(&aesd_device.device_lock);
     result = aesd_setup_cdev(&aesd_device);
 
     if( result ) {
@@ -291,9 +293,9 @@ void aesd_cleanup_module(void)
     
     kfree(aesd_device.buf_entry);
 
-    AESD_CIRCULAR_BUFFER_FOREACH(buf_entry, aesd_device.circ_buf, index){
+    AESD_CIRCULAR_BUFFER_FOREACH(buf_entry, &aesd_device.circ_buf, index){
 
-        if(uf_entry->buffptr){
+        if(buf_entry->buffptr){
             buf_entry->size = 0;
             kfree(buf_entry->buffptr);
             buf_entry->buffptr = NULL;
