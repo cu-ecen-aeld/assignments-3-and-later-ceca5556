@@ -35,6 +35,7 @@
 
 
 // #define USE_PRINT_DBUG
+#define USE_AESD_CHAR_DEVICE
 
 #define IPV4            (0)
 #define IPV6            (1)
@@ -53,7 +54,14 @@
 #endif
 
 #define BACKLOG_CNCTS   (5)
+
+#ifdef USE_AESD_CHAR_DEVICE
+#define DEFAULT_FILE    ("/dev/aesdchar")
+
+#else
 #define DEFAULT_FILE    ("/var/tmp/aesdsocketdata")
+#endif
+
 #define DELETE_FILE     (true)
 #define STRG_AVILBL     (64)
 
