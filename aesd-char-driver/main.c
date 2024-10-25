@@ -68,7 +68,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 
     tmp_dev = (struct aesd_dev*)filp->private_data;
 
-    rc = mutex_lock_interruptible(&tmp_dev->buf_lock);
+    rc = mutex_lock_interruptible(&tmp_dev->device_lock);
     if(rc){
         PDEBUG("ERROR: mutex lock failed with code: %d", rc);
         retval = -rc;
@@ -79,11 +79,10 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
                                                                          *f_pos,
                                                                          &tmp_off_byte);
 
-    mutex_unlock(&tmp_dev->buf_lock);
 
     if(!tmp_dev->buf_entry){
         retval = 0;
-        goto end;
+        goto mutex_cleanup;
     }
     
     bytes_left = copy_to_user(buf,tmp_dev->buf_entry->buffptr,tmp_dev->buf_entry->size);
@@ -94,17 +93,25 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 
     if(!bytes_left){
         retval = tmp_dev->buf_entry->size;
+        *f_pos += tmp_dev->buf_entry->size - tmp_off_byte;
     }
     else{
         PDEBUG("ERROR: could not read all necessary bytes from buffer", bytes_read, tmp_dev->buf_entry->size );
         // goto mutex_cleanup;
+        retval = bytes_read;
+
+        // goto end;
     }
 
-    *f_pos += tmp_dev->buf_entry->size - tmp_off_byte;
 
+ mutex_cleanup:
+    rc = mutex_unlock(&tmp_dev->device_lock);
+    if(rc){
 
-//  mutex_cleanup:
-    // mutex_unlock(&tmp_dev->buf_lock);
+        PDEBUG("ERROR: could not read all necessary bytes from buffer", bytes_read, tmp_dev->buf_entry->size );
+        retval = -EFAULT;
+
+    }
 
  end: 
     return retval;
@@ -126,6 +133,14 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 
     // define temporary aesd_dev struct
     tmp_dev = (struct aesd_dev*)filp->private_data;
+
+
+    rc = mutex_lock_interruptible(&tmp_dev->device_lock);
+        if(rc){
+            PDEBUG("ERROR: mutex lock failed with code: %d", rc);
+            retval = -rc;
+            goto end;
+        }
 
     // check size of buffer
     if(!tmp_dev->buf_entry->size){// if zero -> hasn't been allocated
@@ -175,21 +190,22 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     if(tmp_dev->buf_entry->buffptr[tmp_dev->buf_entry->size - 1] == (char)'\n'){
 
         // lock circular buffer
-        rc = mutex_lock_interruptible(&tmp_dev->buf_lock);
-        if(rc){
-            PDEBUG("ERROR: mutex lock failed with code: %d", rc);
-            retval = -rc;
-            goto end;
-        }
+        // rc = mutex_lock_interruptible(&tmp_dev->device_lock);
+        // if(rc){
+        //     PDEBUG("ERROR: mutex lock failed with code: %d", rc);
+        //     retval = -rc;
+        //     goto end;
+        // }
 
         // write to circular buffer
         aesd_circular_buffer_add_entry(&tmp_dev->circ_buf, tmp_dev->buf_entry);
 
-        mutex_unlock(&tmp_dev->buf_lock);
+        // mutex_unlock(&tmp_dev->device_lock);
 
         // free buffer entry
         tmp_dev->buf_entry->size = 0;
         kfree(tmp_dev->buf_entry->buffptr);
+        tmp_dev->buf_entry->buffptr = NULL;
 
 
     }
@@ -198,7 +214,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 
 
 //  mutex_cleanup:
-//     mutex_unlock(&tmp_dev->buf_lock);
+    mutex_unlock(&tmp_dev->device_lock);
 
 //  free_alloc:
 //     kfree(tmp_dev->buf_entry->buffptr);
@@ -247,7 +263,10 @@ int aesd_init_module(void)
     /**
      * TODO: initialize the AESD specific portion of the device
      */
-
+    aesd_device.buf_entry = kmalloc(sizeof(struct aesd_buffer_entry), GFP_KERNEL);
+    aesd_device.buf_entry->size = 0;
+    aesd_circular_buffer_init(&aesd_device.circ_buf);
+    mutex_init(aesd_device.device_lock);
     result = aesd_setup_cdev(&aesd_device);
 
     if( result ) {
@@ -267,6 +286,21 @@ void aesd_cleanup_module(void)
      * TODO: cleanup AESD specific poritions here as necessary
      */
 
+    int index =0;
+    struct aesd_buffer_entry *buf_entry;
+    
+    kfree(aesd_device.buf_entry);
+
+    AESD_CIRCULAR_BUFFER_FOREACH(buf_entry, aesd_device.circ_buf, index){
+
+        if(uf_entry->buffptr){
+            buf_entry->size = 0;
+            kfree(buf_entry->buffptr);
+            buf_entry->buffptr = NULL;
+        }
+        
+
+    }
     unregister_chrdev_region(devno, 1);
 }
 
