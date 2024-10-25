@@ -43,6 +43,12 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
     * TODO: implement per description
     */
 
+    // if((buffer->out_offs == buffer->in_offs) && !buffer->full){
+
+    //     return NULL;
+
+    // }
+
     uint8_t current_entry = buffer->out_offs;
 
     while(1){
