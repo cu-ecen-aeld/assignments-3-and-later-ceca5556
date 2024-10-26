@@ -83,6 +83,7 @@ struct aesd_buffer_entry aesd_circular_buffer_add_entry(struct aesd_circular_buf
     */
 
     struct aesd_buffer_entry removed_data;
+    removed_data.buffptr = NULL;
 
     if(buffer->full){// check if full -> if true overwrite and update out
         removed_data = buffer->entry[buffer->out_offs];
