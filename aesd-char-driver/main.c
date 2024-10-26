@@ -37,6 +37,7 @@ int aesd_open(struct inode *inode, struct file *filp)
      */
     struct aesd_dev *tmp_dev;
     tmp_dev = container_of(inode->i_cdev, struct aesd_dev, cdev);
+    // PDEBUG("entry buffer pointer val: %p",tmp_dev->buf_entry);
     filp->private_data = tmp_dev;
     return 0;
 }
@@ -68,9 +69,11 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     int bytes_read = 0;
     int bytes_return = 0;
     struct aesd_dev *tmp_dev = NULL;
-    // struct aesd_buffer_entry *buf_entry = NULL;
+    struct aesd_buffer_entry *tmp_buf_entry = NULL;
 
     tmp_dev = (struct aesd_dev*)filp->private_data;
+
+    tmp_buf_entry = tmp_dev->buf_entry;
 
     rc = mutex_lock_interruptible(&tmp_dev->device_lock);
     if(rc){
@@ -79,6 +82,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
         goto end;
     }
 
+////////////////////////////////////////////////// tmp dev buf entry ///////////////////////////////
     tmp_dev->buf_entry = aesd_circular_buffer_find_entry_offset_for_fpos(&tmp_dev->circ_buf,
                                                                          *f_pos,
                                                                          &tmp_off_byte);
@@ -90,7 +94,8 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     }
     
     PDEBUG("string of size %ld read from buffer: %s",tmp_dev->buf_entry->size,tmp_dev->buf_entry->buffptr);
-    goto mutex_cleanup;
+    // PDEBUG("entry buffer pointer val: %p",tmp_dev->buf_entry);
+    // goto mutex_cleanup;
     bytes_return = tmp_dev->buf_entry->size - tmp_off_byte;
     bytes_left = copy_to_user(buf,tmp_dev->buf_entry->buffptr,bytes_return);
 
@@ -122,7 +127,8 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 
     // }
 
- end: 
+ end:
+    tmp_dev->buf_entry = tmp_buf_entry;
     return retval;
 }
 
