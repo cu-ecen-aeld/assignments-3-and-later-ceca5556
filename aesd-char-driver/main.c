@@ -62,11 +62,11 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     /**
      * TODO: handle read
      */
-    goto end;
     int rc = 0;
     ssize_t tmp_off_byte = 0;
     int bytes_left = 0;
     int bytes_read = 0;
+    int bytes_return = 0;
     struct aesd_dev *tmp_dev = NULL;
     // struct aesd_buffer_entry *buf_entry = NULL;
 
@@ -89,20 +89,24 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
         goto mutex_cleanup;
     }
     
-    bytes_left = copy_to_user(buf,tmp_dev->buf_entry->buffptr,tmp_dev->buf_entry->size);
+    PDEBUG("string of size %ld read from buffer: %s",tmp_dev->buf_entry->size,tmp_dev->buf_entry->buffptr);
+    // goto mutex_cleanup;
+    bytes_return = tmp_dev->buf_entry->size - tmp_off_byte;
+    bytes_left = copy_to_user(buf,tmp_dev->buf_entry->buffptr,bytes_return);
 
     bytes_read = tmp_dev->buf_entry->size - bytes_left;
 
-    PDEBUG("DEBUG: %d out of %d bytes read from buffer", bytes_read, tmp_dev->buf_entry->size );
+    PDEBUG("%d out of %ld bytes read from buffer", bytes_read, tmp_dev->buf_entry->size );
 
     if(!bytes_left){
-        retval = tmp_dev->buf_entry->size;
-        *f_pos += tmp_dev->buf_entry->size - tmp_off_byte;
+        retval = bytes_return;
+        *f_pos += retval;
     }
     else{
         // PDEBUG("ERROR: could not read all necessary bytes from buffer", bytes_read, tmp_dev->buf_entry->size );
         // goto mutex_cleanup;
         retval = bytes_read;
+        *f_pos += retval;
 
         // goto end;
     }
@@ -135,6 +139,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     int tmp_off_byte = 0;
     int bytes_left = 0;
     struct aesd_dev *tmp_dev = NULL;
+    struct aesd_buffer_entry removed_data; 
     char *local_tmp_buf;
 
     // define temporary aesd_dev struct
@@ -142,11 +147,11 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 
 
     rc = mutex_lock_interruptible(&tmp_dev->device_lock);
-        if(rc){
-            // PDEBUG("ERROR: mutex lock failed with code: %d", rc);
-            retval = -rc;
-            goto end;
-        }
+    if(rc){
+        PDEBUG("mutex lock failed with code: %d", rc);
+        retval = -rc;
+        goto end;
+    }
 
     // check size of buffer
     if(!tmp_dev->buf_entry->size){// if zero -> hasn't been allocated
@@ -187,7 +192,7 @@ PDEBUG("realloc call passed");
     }
 
 // PDEBUG(" buffer pointer: %p",tmp_dev->buf_entry->buffptr);
-PDEBUG(" buffer size before: %ld",tmp_dev->buf_entry->size);
+PDEBUG(" temp buffer size before: %ld",tmp_dev->buf_entry->size);
 
     // copy user buffer to entry
     // rc = copy_from_user(tmp_dev->buf_entry->buffptr[tmp_dev->buf_entry->size], buf, count); // not working???
@@ -206,8 +211,8 @@ PDEBUG("copy from user passed");
     tmp_dev->buf_entry->size += count;
     retval = count;
 
-PDEBUG(" buffer size after: %ld",tmp_dev->buf_entry->size);
-PDEBUG(" buffer content: %s",tmp_dev->buf_entry->buffptr);
+PDEBUG(" temp buffer size after: %ld",tmp_dev->buf_entry->size);
+PDEBUG(" temp buffer content: %s",tmp_dev->buf_entry->buffptr);
 
     // check last character of buffer
     if(tmp_dev->buf_entry->buffptr[tmp_dev->buf_entry->size - 1] == (char)'\n'){
@@ -223,16 +228,22 @@ PDEBUG(" buffer content: %s",tmp_dev->buf_entry->buffptr);
         // write to circular buffer
 PDEBUG("placing %s into circular buffer", tmp_dev->buf_entry->buffptr);
 
-        aesd_circular_buffer_add_entry(&tmp_dev->circ_buf, tmp_dev->buf_entry);
+        removed_data = aesd_circular_buffer_add_entry(&tmp_dev->circ_buf, tmp_dev->buf_entry);
 // PDEBUG("circ buf now has %s", &tmp_dev->circ_buf);   
 
         // mutex_unlock(&tmp_dev->device_lock);
 
         // free buffer entry
         tmp_dev->buf_entry->size = 0;
-        kfree(tmp_dev->buf_entry->buffptr);
-        tmp_dev->buf_entry->buffptr = NULL;
-PDEBUG("entry buffer freed");
+        // kfree(tmp_dev->buf_entry->buffptr);
+        // tmp_dev->buf_entry->buffptr = NULL;
+
+        if(removed_data.buffptr){
+            removed_data.size = 0;
+            kfree(removed_data.buffptr);
+            removed_data.buffptr = NULL;
+            PDEBUG("removed buffer freed");
+        }
 
 
     }
@@ -324,23 +335,23 @@ PDEBUG("cleanup: buf entry pointer: %p", aesd_device.buf_entry);
 PDEBUG("cleanup: buf entry pointer after: %p", aesd_device.buf_entry);
 
 
-    // AESD_CIRCULAR_BUFFER_FOREACH(circ_buf_entry, &aesd_device.circ_buf, index){
+    AESD_CIRCULAR_BUFFER_FOREACH(circ_buf_entry, &aesd_device.circ_buf, index){
     // for(index = 0; index < AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED; index++){
 
     
         // PDEBUG("cleanup loop: buf entry pointer before: %p", circ_buf_entry);
         // PDEBUG("cleanup loop: buf entry pointer before: %p", aesd_device.circ_buf.entry[index].buffptr);
 
-        // if(circ_buf_entry->buffptr != NULL){
+        if(circ_buf_entry->buffptr != NULL){
 
-        //     // PDEBUG("cleanup loop: freeing circ buf entry");
-        //     // circ_buf_entry->size = 0;
-        //     // kfree(circ_buf_entry->buffptr);
-        //     // circ_buf_entry->buffptr = NULL;
-        //     aesd_device.circ_buf.entry[index].size = 0;
+            PDEBUG("cleanup loop: freeing circ buf entry");
+            circ_buf_entry->size = 0;
+            kfree(circ_buf_entry->buffptr);
+            circ_buf_entry->buffptr = NULL;
+            // aesd_device.circ_buf.entry[index].size = 0;
         //     kfree(aesd_device.circ_buf.entry[index].buffptr);
         //     // aesd_device.circ_buf.entry[index].buffptr = NULL;
-        // }
+        }
 
         // // PDEBUG("cleanup loop: buf entry pointer after: %p", circ_buf_entry);
         // PDEBUG("cleanup loop: buf entry pointer after: %p", aesd_device.circ_buf.entry[index].buffptr);
@@ -363,7 +374,7 @@ PDEBUG("cleanup: buf entry pointer after: %p", aesd_device.buf_entry);
         // PDEBUG("cleanup loop: buf entry pointer after: %p", aesd_device.circ_buf.entry[1].buffptr);
         
 
-    // }
+    }
     // PDEBUG("only");
     // PDEBUG("cleanup loop: buf entry pointer before: %p", aesd_device.circ_buf.entry[0].buffptr);
     // kfree(aesd_device.circ_buf.entry[0].buffptr);
