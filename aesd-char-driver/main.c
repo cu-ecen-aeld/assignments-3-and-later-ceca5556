@@ -217,7 +217,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 
         if(removed_data.buffptr){ // check if removed entry pointer already null
             removed_data.size = 0;
-            // PDEBUG("freeing removed buffer of pointer: %p",removed_data.buffptr);
+            PDEBUG("removed buffer of pointer: %p",removed_data.buffptr);
             kfree(removed_data.buffptr);
             removed_data.buffptr = NULL;
             PDEBUG("overwritten buffer has been freed");
