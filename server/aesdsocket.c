@@ -112,9 +112,11 @@ static void cleanup(bool file_delete, int accept_fd, int socket_fd, int file_fd)
         close(file_fd);
     }
 
-    // if(file_delete){
-    //     remove(DEFAULT_FILE);
-    // }
+ #ifndef USE_AESD_CHAR_DEVICE
+    if(file_delete){
+        remove(DEFAULT_FILE);
+    }
+ #endif
 
 }
 
@@ -198,7 +200,8 @@ void *timestamp_thread(){
     if(local_w_file_fd == -1){
 
         syslog(LOG_ERR, "error opening %s: %s",DEFAULT_FILE,strerror(errno));
-        return SYSTEM_ERROR;
+        cleanup(false,0,0,local_w_file_fd);
+        return NULL;
 
     }
 
@@ -209,6 +212,7 @@ void *timestamp_thread(){
         loc_time = localtime(&tme);
         if(loc_time == NULL){
             syslog(LOG_ERR,"ERRROR timestamp thread, ID %ld: localtime function failed", timestamp_thread_ID);
+            cleanup(false,0,0,local_w_file_fd);
             raise(SIGINT);
 
         }
@@ -217,6 +221,7 @@ void *timestamp_thread(){
         if(rc == 0){
 
             syslog(LOG_ERR,"ERRROR timestamp thread, ID %ld: strftime returned 0", timestamp_thread_ID);
+            cleanup(false,0,0,local_w_file_fd);
             raise(SIGINT);
 
         }
