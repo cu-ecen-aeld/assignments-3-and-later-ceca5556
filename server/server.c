@@ -15,7 +15,14 @@
 
 
 #define BKLG_PND_CNCT   (5)
+
+#ifdef USE_AESD_CHAR_DEVICE
+#define DEFAULT_FILE    ("/dev/aesdchar")
+
+#else
 #define DEFAULT_FILE    ("/var/tmp/aesdsocketdata")
+#endif
+
 #define DELETE_FILE     (true)
 #define STRG_AVILBL     (1024)
 
@@ -47,6 +54,11 @@ void connection_cleanup(connection_params_t *cnnct_params, bool thread_error){
 
     // }
 
+    if(cnnct_params->file_fd){
+        close(cnnct_params->file_fd);
+        cnnct_params->file_fd = 0;
+    }
+
     if(cnnct_params->cip_str != NULL){
 
         free(cnnct_params->cip_str);
@@ -71,6 +83,15 @@ void *connection_thread(void* thread_params){
     ssize_t write_bytes = 0;
     char *rec_buf;
     bool thread_error = false;
+
+    connection_p->file_fd = open(DEFAULT_FILE,O_RDWR|O_APPEND|O_CREAT, S_IRWXU|S_IRGRP|S_IROTH);
+
+    if(connection_p->file_fd == -1){
+
+        syslog(LOG_ERR, "error opening %s: %s",DEFAULT_FILE,strerror(errno));
+        return NULL;
+
+    }
 
 
     // set up recieve buffer

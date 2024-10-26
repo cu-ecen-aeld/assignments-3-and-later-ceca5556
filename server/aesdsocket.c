@@ -35,7 +35,7 @@
 
 
 // #define USE_PRINT_DBUG
-#define USE_AESD_CHAR_DEVICE
+// #define USE_AESD_CHAR_DEVICE
 
 #define IPV4            (0)
 #define IPV6            (1)
@@ -193,6 +193,15 @@ void *timestamp_thread(){
     // memset(timestamp_buf,0,TSTAMP_LENGTH);
     int stamp_start = strlen(timestamp_buf);
 
+    int local_w_file_fd = open(DEFAULT_FILE,O_RDWR|O_APPEND|O_CREAT, S_IRWXU|S_IRGRP|S_IROTH);
+
+    if(local_w_file_fd == -1){
+
+        syslog(LOG_ERR, "error opening %s: %s",DEFAULT_FILE,strerror(errno));
+        return SYSTEM_ERROR;
+
+    }
+
     time_t tme;
     struct tm *loc_time;
     while(!sig_rec){
@@ -219,20 +228,23 @@ void *timestamp_thread(){
         rc = pthread_mutex_lock(&file_mutex);
         if(rc != 0){
             syslog(LOG_ERR,"ERRROR timestamp thread, ID %ld: mutex lock function failed: %s", timestamp_thread_ID,strerror(rc));
+            cleanup(false,0,0,local_w_file_fd);
             raise(SIGINT);
         }
 
-        write_bytes = write(w_file_fd,timestamp_buf,strlen(timestamp_buf));
+        write_bytes = write(local_w_file_fd,timestamp_buf,strlen(timestamp_buf));
 
         rc = pthread_mutex_unlock(&file_mutex);
         if(rc != 0){
             syslog(LOG_ERR,"ERRROR timestamp thread, ID %ld: mutex unlock function failed: %s", timestamp_thread_ID,strerror(rc));
+            cleanup(false,0,0,local_w_file_fd);
             raise(SIGINT);
         }
 
         if(write_bytes != strlen(timestamp_buf)){
 
             syslog(LOG_ERR, "ERRROR timestamp thread, ID %ld: not able to write all bytes recieved to file", timestamp_thread_ID);
+            cleanup(false,0,0,local_w_file_fd);
             raise(SIGINT);
 
         }
@@ -242,6 +254,7 @@ void *timestamp_thread(){
     }
 
     syslog(LOG_NOTICE, "NOTICE: EXITING TIME STAMP UP, ID: %ld", timestamp_thread_ID);
+    cleanup(false,0,0,local_w_file_fd);
     pthread_exit(NULL);
 
 }
@@ -302,14 +315,14 @@ int main(int argc, char** argv){
         arg++;
     }
 
-    w_file_fd = open(DEFAULT_FILE,O_RDWR|O_APPEND|O_CREAT, S_IRWXU|S_IRGRP|S_IROTH);
+    // w_file_fd = open(DEFAULT_FILE,O_RDWR|O_APPEND|O_CREAT, S_IRWXU|S_IRGRP|S_IROTH);
 
-    if(w_file_fd == -1){
+    // if(w_file_fd == -1){
 
-        syslog(LOG_ERR, "error opening %s: %s",DEFAULT_FILE,strerror(errno));
-        return SYSTEM_ERROR;
+    //     syslog(LOG_ERR, "error opening %s: %s",DEFAULT_FILE,strerror(errno));
+    //     return SYSTEM_ERROR;
 
-    }
+    // }
 
 
     // get socket file descriptor
@@ -504,7 +517,7 @@ int main(int argc, char** argv){
 
         cnct_thr_params->file_mutex = &file_mutex;
         cnct_thr_params->accpt_fd = accpt_fd;
-        cnct_thr_params->file_fd = w_file_fd;
+        // cnct_thr_params->file_fd = w_file_fd;
         cnct_thr_params->success = false;
         cnct_thr_params->complete = false;
         cnct_thr_params->cip_str = (char*)malloc(client_addr_len);
