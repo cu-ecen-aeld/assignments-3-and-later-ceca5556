@@ -103,7 +103,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     // check total bytes sent
     bytes_sent = tmp_dev->buf_entry->size - bytes_left;
 
-    PDEBUG("%d out of %ld bytes copied to user", bytes_read, tmp_dev->buf_entry->size );
+    PDEBUG("%d out of %ld bytes copied to user", bytes_sent, tmp_dev->buf_entry->size );
 
     if(!bytes_left){ // if all sent
         retval = bytes_return;
@@ -134,8 +134,6 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
      */
     
     int rc = 0;
-    // int tmp_off_byte = 0;
-    // int bytes_left = 0;
     struct aesd_dev *tmp_dev = NULL;
     struct aesd_buffer_entry removed_data; 
     char *local_tmp_buf;
