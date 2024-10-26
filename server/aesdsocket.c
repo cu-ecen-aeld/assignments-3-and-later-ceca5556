@@ -112,9 +112,9 @@ static void cleanup(bool file_delete, int accept_fd, int socket_fd, int file_fd)
         close(file_fd);
     }
 
-    if(file_delete){
-        remove(DEFAULT_FILE);
-    }
+    // if(file_delete){
+    //     remove(DEFAULT_FILE);
+    // }
 
 }
 
