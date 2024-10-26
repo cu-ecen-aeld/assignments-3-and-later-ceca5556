@@ -90,13 +90,13 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     }
     
     PDEBUG("string of size %ld read from buffer: %s",tmp_dev->buf_entry->size,tmp_dev->buf_entry->buffptr);
-    // goto mutex_cleanup;
+    goto mutex_cleanup;
     bytes_return = tmp_dev->buf_entry->size - tmp_off_byte;
     bytes_left = copy_to_user(buf,tmp_dev->buf_entry->buffptr,bytes_return);
 
     bytes_read = tmp_dev->buf_entry->size - bytes_left;
 
-    PDEBUG("%d out of %ld bytes read from buffer", bytes_read, tmp_dev->buf_entry->size );
+    PDEBUG("%d out of %ld bytes copied to user", bytes_read, tmp_dev->buf_entry->size );
 
     if(!bytes_left){
         retval = bytes_return;
@@ -145,18 +145,22 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     // define temporary aesd_dev struct
     tmp_dev = (struct aesd_dev*)filp->private_data;
 
-
+// PDEBUG("locking mutex");
     rc = mutex_lock_interruptible(&tmp_dev->device_lock);
+// PDEBUG("after mutex");
     if(rc){
         PDEBUG("mutex lock failed with code: %d", rc);
         retval = -rc;
         goto end;
     }
+// PDEBUG("after mutex if");
 
     // check size of buffer
+    // PDEBUG("buf entry size: %ld", tmp_dev->buf_entry->size);
+    PDEBUG("tmp dev buf entry pointer: %p", tmp_dev->buf_entry);
     if(!tmp_dev->buf_entry->size){// if zero -> hasn't been allocated
 
-PDEBUG("malloc call");
+// PDEBUG("malloc call");
         tmp_dev->buf_entry->buffptr = kmalloc(count*sizeof(char), GFP_KERNEL);
 
         if(!tmp_dev->buf_entry->buffptr){
@@ -168,14 +172,14 @@ PDEBUG("malloc call");
 
         }
         local_tmp_buf = tmp_dev->buf_entry->buffptr;
-PDEBUG("malloc call passed");
+// PDEBUG("malloc call passed");
 
 
 
     }
     else{ // if non zero, has been allocated before, realloc to increase size
 
-PDEBUG("realloc call");
+// PDEBUG("realloc call");
         tmp_dev->buf_entry->buffptr = krealloc(tmp_dev->buf_entry->buffptr, tmp_dev->buf_entry->size + count, GFP_KERNEL);
 
         if(!tmp_dev->buf_entry->buffptr){
@@ -187,7 +191,7 @@ PDEBUG("realloc call");
 
         }
         local_tmp_buf = tmp_dev->buf_entry->buffptr + tmp_dev->buf_entry->size;
-PDEBUG("realloc call passed");
+// PDEBUG("realloc call passed");
 
     }
 
@@ -206,7 +210,7 @@ PDEBUG(" temp buffer size before: %ld",tmp_dev->buf_entry->size);
 
     }
 
-PDEBUG("copy from user passed");
+// PDEBUG("copy from user passed");
 
     tmp_dev->buf_entry->size += count;
     retval = count;
@@ -233,13 +237,11 @@ PDEBUG("placing %s into circular buffer", tmp_dev->buf_entry->buffptr);
 
         // mutex_unlock(&tmp_dev->device_lock);
 
-        // free buffer entry
         tmp_dev->buf_entry->size = 0;
-        // kfree(tmp_dev->buf_entry->buffptr);
-        // tmp_dev->buf_entry->buffptr = NULL;
 
         if(removed_data.buffptr){
             removed_data.size = 0;
+            // PDEBUG("freeing removed buffer of pointer: %p",removed_data.buffptr);
             kfree(removed_data.buffptr);
             removed_data.buffptr = NULL;
             PDEBUG("removed buffer freed");
@@ -253,9 +255,6 @@ PDEBUG("placing %s into circular buffer", tmp_dev->buf_entry->buffptr);
 
  mutex_cleanup:
     mutex_unlock(&tmp_dev->device_lock);
-
-//  free_alloc:
-//     kfree(tmp_dev->buf_entry->buffptr);
 
  end: 
     return retval;
