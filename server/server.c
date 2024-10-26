@@ -31,12 +31,13 @@
 
 void connection_cleanup(connection_params_t *cnnct_params, bool thread_error){
 
+    int rc =0;
 
 
     if(cnnct_params->accpt_fd){
         close(cnnct_params->accpt_fd);
         cnnct_params->accpt_fd = 0;
-        syslog(LOG_NOTICE, "NOTICE: Closed connection from %s", cnnct_params->cip_str);
+        syslog(LOG_NOTICE, "NOTICE: Closed connection from %s with return code: %d", cnnct_params->cip_str,rc);
     }
     if(thread_error){
         cnnct_params->success = false;
@@ -55,7 +56,8 @@ void connection_cleanup(connection_params_t *cnnct_params, bool thread_error){
     // }
 
     if(cnnct_params->file_fd){
-        close(cnnct_params->file_fd);
+        rc = close(cnnct_params->file_fd);
+        syslog(LOG_NOTICE, "NOTICE: Closed file descriptor %d with return code: %d", cnnct_params->file_fd,rc);
         cnnct_params->file_fd = 0;
     }
 
