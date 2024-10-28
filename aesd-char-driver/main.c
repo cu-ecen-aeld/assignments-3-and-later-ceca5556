@@ -55,6 +55,59 @@ int aesd_release(struct inode *inode, struct file *filp)
     return 0;
 }
 
+
+loff_t aesd_llseek(struct file *filp, loff_t desired_offset, int whence){
+
+    struct aesd_dev *tmp_dev = NULL;
+    struct aesd_buffer_entry *circ_buf_entry = NULL;
+    loff_t new_off = 0;
+    loff_t tot_size = 0;
+    int index = 0;
+
+    tmp_dev = (struct aesd_dev *)filp->private_data;
+
+    rc = mutex_lock_interruptible(&tmp_dev->device_lock);
+    if(rc){
+        // PDEBUG("ERROR: mutex lock failed with code: %d", rc);
+        retval = -rc;
+        goto end;
+    }
+
+    AESD_CIRCULAR_BUFFER_FOREACH(circ_buf_entry, &tmp_dev->circ_buf, index){
+
+        tot_size += circ_buf_entry->size;
+
+    }
+
+
+
+    switch(whence){
+        case SEEK_SET:
+            new_off = desired_offset % tot_size;
+            break;
+        
+        case SEEK_CUR:
+            new_off = (tmp_dev->f_pos + desired_offset) % tot_size;
+            break;
+
+        case SEEK_END:
+            new_off = (tot_size + desired_offset) % tot_size;
+            break;
+
+        default:
+            return -EINVAL;
+    }
+
+    tmp_dev->f_pos = new_off;
+
+ mutex_cleanup:
+    mutex_unlock(&tmp_dev->device_lock);
+
+ end:
+    return new_off;
+
+}
+
 ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
                 loff_t *f_pos)
 {
@@ -243,6 +296,7 @@ struct file_operations aesd_fops = {
     .write =    aesd_write,
     .open =     aesd_open,
     .release =  aesd_release,
+    .llseek =   aesd_llseek,
 };
 
 static int aesd_setup_cdev(struct aesd_dev *dev)
