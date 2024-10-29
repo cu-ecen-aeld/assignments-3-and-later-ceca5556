@@ -12,10 +12,10 @@
 #include <linux/string.h>
 #else
 #include <string.h>
+#include <stdio.h>
 #endif
 
 #include "aesd-circular-buffer.h"
-#include <stdio.h>
 
 static uint8_t update_offset(uint8_t offset){
 
@@ -42,6 +42,12 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
     /**
     * TODO: implement per description
     */
+
+    // if((buffer->out_offs == buffer->in_offs) && !buffer->full){
+
+    //     return NULL;
+
+    // }
 
     uint8_t current_entry = buffer->out_offs;
 
@@ -70,12 +76,17 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
 * Any necessary locking must be handled by the caller
 * Any memory referenced in @param add_entry must be allocated by and/or must have a lifetime managed by the caller.
 */
-void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const struct aesd_buffer_entry *add_entry)
+struct aesd_buffer_entry aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const struct aesd_buffer_entry *add_entry)
 {
     /**
     * TODO: implement per description
     */
+
+    struct aesd_buffer_entry removed_data;
+    removed_data.buffptr = NULL;
+
     if(buffer->full){// check if full -> if true overwrite and update out
+        removed_data = buffer->entry[buffer->out_offs];
         buffer->out_offs = update_offset(buffer->out_offs);
         buffer->full = false;
     }
@@ -87,6 +98,8 @@ void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const s
     if(buffer->in_offs == buffer->out_offs){// check if full after update
         buffer->full = true;
     }
+
+    return removed_data;
 
 }
 

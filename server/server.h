@@ -13,10 +13,12 @@
 
 #include <signal.h>
 #include <arpa/inet.h>
-
+#include <fcntl.h>
 #include <pthread.h>
 
 #include "queue.h"
+
+#define USE_AESD_CHAR_DEVICE
 
 typedef struct connection_params_s{
 

@@ -35,6 +35,7 @@
 
 
 // #define USE_PRINT_DBUG
+// #define USE_AESD_CHAR_DEVICE
 
 #define IPV4            (0)
 #define IPV6            (1)
@@ -53,7 +54,14 @@
 #endif
 
 #define BACKLOG_CNCTS   (5)
+
+#ifdef USE_AESD_CHAR_DEVICE
+#define DEFAULT_FILE    ("/dev/aesdchar")
+
+#else
 #define DEFAULT_FILE    ("/var/tmp/aesdsocketdata")
+#endif
+
 #define DELETE_FILE     (true)
 #define STRG_AVILBL     (64)
 
@@ -92,21 +100,23 @@ static void cleanup(bool file_delete, int accept_fd, int socket_fd, int file_fd)
 
     
 
-    if(accept_fd){
+    if(accept_fd > 0){
         close(accept_fd);
     }
 
-    if(socket_fd){
+    if(socket_fd > 0){
         close(socket_fd);
     }
 
-    if(file_fd){
+    if(file_fd > 0){
         close(file_fd);
     }
 
+ #ifndef USE_AESD_CHAR_DEVICE
     if(file_delete){
         remove(DEFAULT_FILE);
     }
+ #endif
 
 }
 
@@ -127,9 +137,10 @@ void signal_handler(){
 */
 void app_shutdown(){
 
-
+ #ifndef USE_AESD_CHAR_DEVICE
     pthread_kill(timestamp_thread_ID, SIGTERM);
     pthread_join(timestamp_thread_ID, NULL);
+ #endif
 
 
     int rc;
@@ -168,44 +179,6 @@ void app_shutdown(){
 
 }
 
-// void *thread_complete_cleanup(){
-// // static void thread_complete_cleanup(){
-
-//     // connection_params_t *thread_params = sip->
-
-//     // syslog(LOG_NOTICE,"clean thread id: %ld", cleanup_thread_ID);
-//     connection_params_t *cnnct_check = NULL;
-//     // connection_params_t *to_free = NULL;
-//     // int k = 5;
-//     // syslog(LOG_NOTICE,"sig_rec is %s\n",sig_rec ? "true" : "false");
-//     while(!sig_rec){
-//         TAILQ_FOREACH(cnnct_check, &thread_list, next_connection){
-//             // syslog(LOG_NOTICE,"sig_rec is %s\n",sig_rec ? "true" : "false");
-//         // TAILQ_FOREACH_SAFE(cnnct_check, &thread_list, next_connection,cnnct_check->next_connection.tqe_next){
-
-//             // syslog(LOG_NOTICE,"NOTICE: clean thread id: %ld", cleanup_thread_ID);
-//             if(cnnct_check->complete){
-//                 // cnnct_check->complete = false;
-//                 pthread_join(cnnct_check->thread_ID,NULL);
-//                 // printf("thread ID %ld, oID: %d, has completed %s\n",cnnct_check->thread_ID, cnnct_check->other_id,cnnct_check->success ? "successfully" : "in failure");
-//                 syslog(LOG_NOTICE,"NOTICE: thread ID %ld has completed %s\n",cnnct_check->thread_ID,cnnct_check->success ? "successfully" : "in failure");
-//                 TAILQ_REMOVE(&thread_list, cnnct_check, next_connection);
-//                 // to_free = cnnct_check;
-//                 free(cnnct_check);
-//                 break;
-//                 // cnnct_check = NULL;
-//             }
-
-//         }
-//         // k--;
-//         // usleep(100);
-//     // printf("sig_rec is %s\n",sig_rec ? "true" : "false");  
-//     }
-//     // return NULL;
-//     syslog(LOG_NOTICE, "NOTICE: EXITING THREAD CLEAN UP, ID: %ld", cleanup_thread_ID);
-//     pthread_exit(NULL);
-//     // return;
-// }
 
 
 /*
@@ -222,6 +195,16 @@ void *timestamp_thread(){
     // memset(timestamp_buf,0,TSTAMP_LENGTH);
     int stamp_start = strlen(timestamp_buf);
 
+    int local_w_file_fd = open(DEFAULT_FILE,O_RDWR|O_APPEND|O_CREAT, S_IRWXU|S_IRGRP|S_IROTH);
+
+    if(local_w_file_fd == -1){
+
+        syslog(LOG_ERR, "error opening %s: %s",DEFAULT_FILE,strerror(errno));
+        cleanup(false,0,0,local_w_file_fd);
+        return NULL;
+
+    }
+
     time_t tme;
     struct tm *loc_time;
     while(!sig_rec){
@@ -229,6 +212,7 @@ void *timestamp_thread(){
         loc_time = localtime(&tme);
         if(loc_time == NULL){
             syslog(LOG_ERR,"ERRROR timestamp thread, ID %ld: localtime function failed", timestamp_thread_ID);
+            cleanup(false,0,0,local_w_file_fd);
             raise(SIGINT);
 
         }
@@ -237,6 +221,7 @@ void *timestamp_thread(){
         if(rc == 0){
 
             syslog(LOG_ERR,"ERRROR timestamp thread, ID %ld: strftime returned 0", timestamp_thread_ID);
+            cleanup(false,0,0,local_w_file_fd);
             raise(SIGINT);
 
         }
@@ -248,20 +233,23 @@ void *timestamp_thread(){
         rc = pthread_mutex_lock(&file_mutex);
         if(rc != 0){
             syslog(LOG_ERR,"ERRROR timestamp thread, ID %ld: mutex lock function failed: %s", timestamp_thread_ID,strerror(rc));
+            cleanup(false,0,0,local_w_file_fd);
             raise(SIGINT);
         }
 
-        write_bytes = write(w_file_fd,timestamp_buf,strlen(timestamp_buf));
+        write_bytes = write(local_w_file_fd,timestamp_buf,strlen(timestamp_buf));
 
         rc = pthread_mutex_unlock(&file_mutex);
         if(rc != 0){
             syslog(LOG_ERR,"ERRROR timestamp thread, ID %ld: mutex unlock function failed: %s", timestamp_thread_ID,strerror(rc));
+            cleanup(false,0,0,local_w_file_fd);
             raise(SIGINT);
         }
 
         if(write_bytes != strlen(timestamp_buf)){
 
             syslog(LOG_ERR, "ERRROR timestamp thread, ID %ld: not able to write all bytes recieved to file", timestamp_thread_ID);
+            cleanup(false,0,0,local_w_file_fd);
             raise(SIGINT);
 
         }
@@ -271,6 +259,7 @@ void *timestamp_thread(){
     }
 
     syslog(LOG_NOTICE, "NOTICE: EXITING TIME STAMP UP, ID: %ld", timestamp_thread_ID);
+    cleanup(false,0,0,local_w_file_fd);
     pthread_exit(NULL);
 
 }
@@ -331,14 +320,14 @@ int main(int argc, char** argv){
         arg++;
     }
 
-    w_file_fd = open(DEFAULT_FILE,O_RDWR|O_APPEND|O_CREAT, S_IRWXU|S_IRGRP|S_IROTH);
+    // w_file_fd = open(DEFAULT_FILE,O_RDWR|O_APPEND|O_CREAT, S_IRWXU|S_IRGRP|S_IROTH);
 
-    if(w_file_fd == -1){
+    // if(w_file_fd == -1){
 
-        syslog(LOG_ERR, "error opening %s: %s",DEFAULT_FILE,strerror(errno));
-        return SYSTEM_ERROR;
+    //     syslog(LOG_ERR, "error opening %s: %s",DEFAULT_FILE,strerror(errno));
+    //     return SYSTEM_ERROR;
 
-    }
+    // }
 
 
     // get socket file descriptor
@@ -448,18 +437,7 @@ int main(int argc, char** argv){
         printf("creating cleanup thread\n");
     #endif
 
-    // create cleanup thread
-    // rc = pthread_create(&cleanup_thread_ID,
-    //                     NULL,
-    //                     thread_complete_cleanup,
-    //                     NULL);
-    // if(rc != 0){
-    //     syslog(LOG_ERR, "ERROR: pthread create error, thread cleanup,with error number: %d", rc);
-    //     return SYSTEM_ERROR;
-    // }
-
-    // syslog(LOG_NOTICE, "NOTICE: CREATED THREAD CLEAN UP, ID: %ld", cleanup_thread_ID);
-
+ #ifndef USE_AESD_CHAR_DEVICE
     // create timestamp thread
     rc = pthread_create(&timestamp_thread_ID,
                         NULL,
@@ -469,6 +447,7 @@ int main(int argc, char** argv){
         syslog(LOG_ERR, "ERROR: pthread create error, time stamp cleanup,with error number: %d", rc);
         return SYSTEM_ERROR;
     }
+ #endif
 
     syslog(LOG_NOTICE, "NOTICE: CREATED TIME STAMP THREAD,ID: %ld", timestamp_thread_ID);
     // listen for connections
@@ -508,6 +487,7 @@ int main(int argc, char** argv){
             
             // cleanup
             // cleanup(0,0,sock_fd,w_file_fd); 
+            accpt_fd = 0;
             continue;           
             // return SYSTEM_ERROR;
 
@@ -542,7 +522,7 @@ int main(int argc, char** argv){
 
         cnct_thr_params->file_mutex = &file_mutex;
         cnct_thr_params->accpt_fd = accpt_fd;
-        cnct_thr_params->file_fd = w_file_fd;
+        // cnct_thr_params->file_fd = w_file_fd;
         cnct_thr_params->success = false;
         cnct_thr_params->complete = false;
         cnct_thr_params->cip_str = (char*)malloc(client_addr_len);
