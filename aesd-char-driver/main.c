@@ -21,6 +21,7 @@
 #include <linux/slab.h>
 
 #include "aesdchar.h"
+#include "aesd_ioctl.h"
 int aesd_major =   0; // use dynamic major
 int aesd_minor =   0;
 
@@ -58,6 +59,7 @@ int aesd_release(struct inode *inode, struct file *filp)
 
 loff_t aesd_llseek(struct file *filp, loff_t desired_offset, int whence){
 
+    int rc = 0;
     struct aesd_dev *tmp_dev = NULL;
     struct aesd_buffer_entry *circ_buf_entry = NULL;
     loff_t new_off = 0;
@@ -69,7 +71,7 @@ loff_t aesd_llseek(struct file *filp, loff_t desired_offset, int whence){
     rc = mutex_lock_interruptible(&tmp_dev->device_lock);
     if(rc){
         // PDEBUG("ERROR: mutex lock failed with code: %d", rc);
-        retval = -rc;
+        new_off = -rc;
         goto end;
     }
 
@@ -79,7 +81,7 @@ loff_t aesd_llseek(struct file *filp, loff_t desired_offset, int whence){
 
     }
 
-
+    mutex_unlock(&tmp_dev->device_lock);
 
     switch(whence){
         case SEEK_SET:
@@ -87,7 +89,7 @@ loff_t aesd_llseek(struct file *filp, loff_t desired_offset, int whence){
             break;
         
         case SEEK_CUR:
-            new_off = (tmp_dev->f_pos + desired_offset) % tot_size;
+            new_off = (filp->f_pos + desired_offset) % tot_size;
             break;
 
         case SEEK_END:
@@ -98,12 +100,15 @@ loff_t aesd_llseek(struct file *filp, loff_t desired_offset, int whence){
             return -EINVAL;
     }
 
-    tmp_dev->f_pos = new_off;
+    if(new_off < 0){
+        return -EINVAL;
+    }
 
- mutex_cleanup:
-    mutex_unlock(&tmp_dev->device_lock);
+//  mutex_cleanup:
+//     mutex_unlock(&tmp_dev->device_lock);
 
  end:
+    filp->f_pos = new_off;
     return new_off;
 
 }
@@ -132,8 +137,9 @@ static long aesd_adjust_file_offset(struct file *filp, uint32_t write_cmd, uint3
     rc = mutex_lock_interruptible(&tmp_dev->device_lock);
     if(rc){
         PDEBUG("mutex lock failed with code: %d", rc);
-        retval = -rc;
-        goto end;
+        // new_off = -rc;
+        // goto end;
+        return rc;
     }
 
     AESD_CIRCULAR_BUFFER_FOREACH(circ_buf_entry, &tmp_dev->circ_buf, cmd_idx){
@@ -148,10 +154,9 @@ static long aesd_adjust_file_offset(struct file *filp, uint32_t write_cmd, uint3
 
     }
 
-    tmp_dev->f_pos = new_off;
-
     mutex_unlock(&tmp_dev->device_lock);
 
+    filp->f_pos = new_off;
     return new_off;
 
 
@@ -229,7 +234,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     bytes_return = tmp_dev->buf_entry->size - tmp_off_byte;
 
     // copy from kernel to user
-    bytes_left = copy_to_user(buf,tmp_dev->buf_entry->buffptr,bytes_return);
+    bytes_left = copy_to_user(buf,&tmp_dev->buf_entry->buffptr[tmp_off_byte],bytes_return);
 
     // check total bytes sent
     bytes_sent = tmp_dev->buf_entry->size - bytes_left;
@@ -375,6 +380,7 @@ struct file_operations aesd_fops = {
     .open =     aesd_open,
     .release =  aesd_release,
     .llseek =   aesd_llseek,
+    .unlocked_ioctl = aesd_ioctl,
 };
 
 static int aesd_setup_cdev(struct aesd_dev *dev)
