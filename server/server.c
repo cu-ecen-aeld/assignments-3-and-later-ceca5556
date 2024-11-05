@@ -9,24 +9,28 @@
 
 
 #include "server.h"
+#include "../aesd-char-driver/aesd_ioctl.h"
 
 // #define USE_PRINT_DBUG
 #define DEBUG_LOGS
 
 
-#define BKLG_PND_CNCT   (5)
+#define BKLG_PND_CNCT       (5)
 
 #ifdef USE_AESD_CHAR_DEVICE
-#define DEFAULT_FILE    ("/dev/aesdchar")
+#define DEFAULT_FILE        ("/dev/aesdchar")
 
 #else
-#define DEFAULT_FILE    ("/var/tmp/aesdsocketdata")
+#define DEFAULT_FILE        ("/var/tmp/aesdsocketdata")
 #endif
 
-#define DELETE_FILE     (true)
-#define STRG_AVILBL     (1024)
+#define DELETE_FILE         (true)
+#define STRG_AVILBL         (1024)
 
-#define SYSTEM_ERROR    (-1)
+#define SYSTEM_ERROR        (-1)
+
+#define IOCTL_SEEK_CMD      ("AESDCHAR_IOCSEEKTO:")
+#define IOCTL_SEEK_CMD_NUM  (2)
 
 
 void connection_cleanup(connection_params_t *cnnct_params, bool thread_error){
@@ -85,6 +89,11 @@ void *connection_thread(void* thread_params){
     ssize_t write_bytes = 0;
     char *rec_buf;
     bool thread_error = false;
+
+    // unique for ioctl
+    int num_match = 0;
+    struct aesd_seekto llseek_struct;
+    bool seek_sent = false;
 
     connection_p->file_fd = open(DEFAULT_FILE,O_RDWR|O_APPEND|O_CREAT, S_IRWXU|S_IRGRP|S_IROTH);
 
@@ -149,44 +158,67 @@ void *connection_thread(void* thread_params){
 
                 done = true;
 
-                #ifdef DEBUG_LOGS
+                if(!strncmp(rec_buf,IOCTL_SEEK_CMD, strlen(IOCTL_SEEK_CMD))){
 
-                    syslog(LOG_INFO, "INFO: CONNECTION THREAD ID: %ld, %ld bytes recieved", connection_p->thread_ID, tot_rec_bytes);
-                    syslog(LOG_INFO, "INFO: CONNECTION THREAD ID: %ld, string received: %s", connection_p->thread_ID, rec_buf);
+                    syslog(LOG_INFO, "INFO: CONNECTION THREAD ID: %ld, ioctl command recieved: %s", connection_p->thread_ID, rec_buf);
 
-                #endif
+                    num_match = sscanf(rec_buf, "%*[^0123456789]%d %*[^0123456789]%d", &llseek_struct.write_cmd, &llseek_struct.write_cmd_offset);
+                    if(num_match != IOCTL_SEEK_CMD_NUM){
+                        syslog(LOG_ERR, "ERROR thread ID %ld: IOCTL command has insuficient parameters", connection_p->thread_ID);
+                        thread_error = true;
+                        break;
+                    }
 
+                    rc = ioctl(connection_p->file_fd,AESDCHAR_IOCSEEKTO,&llseek_struct);
+                    if(rc < 0){
+                        syslog(LOG_ERR, "ERROR thread ID %ld: IOCTL command failed", connection_p->thread_ID);
+                        thread_error = true;
+                        break;
+                    }
 
-                rc = pthread_mutex_lock(connection_p->file_mutex);
-                if(rc != 0){
-                    syslog(LOG_ERR,"ERRROR thread ID %ld: mutex lock function failed: %s", connection_p->thread_ID,strerror(rc));
-                    thread_error = true;
-                    break;
+                    seek_sent = true;
+
                 }
-                
-                // write_bytes += write(connection_p->file_fd,connection_p->rec_buf,tot_rec_bytes);
-                write_bytes += write(connection_p->file_fd,rec_buf,tot_rec_bytes);
-                
+                else{
+                    #ifdef DEBUG_LOGS
 
-                rc = pthread_mutex_unlock(connection_p->file_mutex);
-                if(rc != 0){
-                    syslog(LOG_ERR,"ERRROR thread ID %ld: mutex unlock function failed: %s", connection_p->thread_ID,strerror(rc));
-                    connection_cleanup(connection_p, thread_error);
-                    exit(EXIT_FAILURE);
+                        syslog(LOG_INFO, "INFO: CONNECTION THREAD ID: %ld, %ld bytes recieved", connection_p->thread_ID, tot_rec_bytes);
+                        syslog(LOG_INFO, "INFO: CONNECTION THREAD ID: %ld, string received: %s", connection_p->thread_ID, rec_buf);
+
+                    #endif
+
+
+                    rc = pthread_mutex_lock(connection_p->file_mutex);
+                    if(rc != 0){
+                        syslog(LOG_ERR,"ERRROR thread ID %ld: mutex lock function failed: %s", connection_p->thread_ID,strerror(rc));
+                        thread_error = true;
+                        break;
+                    }
+                    
+                    // write_bytes += write(connection_p->file_fd,connection_p->rec_buf,tot_rec_bytes);
+                    write_bytes += write(connection_p->file_fd,rec_buf,tot_rec_bytes);
+                    
+
+                    rc = pthread_mutex_unlock(connection_p->file_mutex);
+                    if(rc != 0){
+                        syslog(LOG_ERR,"ERRROR thread ID %ld: mutex unlock function failed: %s", connection_p->thread_ID,strerror(rc));
+                        connection_cleanup(connection_p, thread_error);
+                        exit(EXIT_FAILURE);
+                    }
+
+                    if(write_bytes != tot_rec_bytes){
+                        syslog(LOG_ERR, "ERRROR thread ID %ld: not able to write all bytes recieved to file", connection_p->thread_ID);
+                        thread_error = true;
+                        break;
+                    }
+
+                    #ifdef DEBUG_LOGS
+
+                        syslog(LOG_INFO, "INFO: CONNECTION THREAD ID: %ld, %ld of %ld bytes written to file", connection_p->thread_ID, write_bytes, tot_rec_bytes);
+                        // syslog(LOG_INFO, "INFO: CONNECTION THREAD ID: %ld, string written: %s", connection_p->thread_ID, rec_buf);
+
+                    #endif
                 }
-
-                if(write_bytes != tot_rec_bytes){
-                    syslog(LOG_ERR, "ERRROR thread ID %ld: not able to write all bytes recieved to file", connection_p->thread_ID);
-                    thread_error = true;
-                    break;
-                }
-
-                #ifdef DEBUG_LOGS
-
-                    syslog(LOG_INFO, "INFO: CONNECTION THREAD ID: %ld, %ld of %ld bytes written to file", connection_p->thread_ID, write_bytes, tot_rec_bytes);
-                    // syslog(LOG_INFO, "INFO: CONNECTION THREAD ID: %ld, string written: %s", connection_p->thread_ID, rec_buf);
-
-                #endif
 
             }   
             // break;
@@ -231,8 +263,9 @@ void *connection_thread(void* thread_params){
         return NULL;
     }   
     // set file offset back to begining
-    lseek(connection_p->file_fd, 0, SEEK_SET);
-
+    if(!seek_sent){
+        lseek(connection_p->file_fd, 0, SEEK_SET);
+    }
 
     // while(tot_read_bytes != write_bytes){
     while(!done){

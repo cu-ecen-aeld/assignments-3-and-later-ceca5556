@@ -21,6 +21,7 @@
 #include <linux/slab.h>
 
 #include "aesdchar.h"
+#include "aesd_ioctl.h"
 int aesd_major =   0; // use dynamic major
 int aesd_minor =   0;
 
@@ -53,6 +54,141 @@ int aesd_release(struct inode *inode, struct file *filp)
     * allocated in init module
     */
     return 0;
+}
+
+
+loff_t aesd_llseek(struct file *filp, loff_t desired_offset, int whence){
+
+    int rc = 0;
+    struct aesd_dev *tmp_dev = NULL;
+    struct aesd_buffer_entry *circ_buf_entry = NULL;
+    loff_t new_off = 0;
+    loff_t tot_size = 0;
+    int index = 0;
+
+    tmp_dev = (struct aesd_dev *)filp->private_data;
+
+    rc = mutex_lock_interruptible(&tmp_dev->device_lock);
+    if(rc){
+        // PDEBUG("ERROR: mutex lock failed with code: %d", rc);
+        new_off = -rc;
+        goto end;
+    }
+
+    AESD_CIRCULAR_BUFFER_FOREACH(circ_buf_entry, &tmp_dev->circ_buf, index){
+
+        tot_size += circ_buf_entry->size;
+
+    }
+
+    mutex_unlock(&tmp_dev->device_lock);
+
+    switch(whence){
+        case SEEK_SET:
+            new_off = desired_offset % tot_size;
+            break;
+        
+        case SEEK_CUR:
+            new_off = (filp->f_pos + desired_offset) % tot_size;
+            break;
+
+        case SEEK_END:
+            new_off = (tot_size + desired_offset) % tot_size;
+            break;
+
+        default:
+            return -EINVAL;
+    }
+
+    if(new_off < 0){
+        return -EINVAL;
+    }
+
+//  mutex_cleanup:
+//     mutex_unlock(&tmp_dev->device_lock);
+
+ end:
+    filp->f_pos = new_off;
+    return new_off;
+
+}
+
+static long aesd_adjust_file_offset(struct file *filp, uint32_t write_cmd, uint32_t write_cmd_offset){
+
+    int rc = 0;
+    struct aesd_dev *tmp_dev = NULL;
+    struct aesd_buffer_entry *circ_buf_entry = NULL;
+    int cmd_idx = 0;
+    loff_t new_off = 0;
+
+
+    tmp_dev = (struct aesd_dev *)filp->private_data;
+
+    if(write_cmd >= AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED){
+        PDEBUG("write command exceeds max supported opperations");
+        return -EINVAL;
+    }
+    else if(write_cmd_offset >= tmp_dev->circ_buf.entry[write_cmd].size){
+        PDEBUG("write command offset exceeds command size");
+        return -EINVAL;
+    }
+
+
+    rc = mutex_lock_interruptible(&tmp_dev->device_lock);
+    if(rc){
+        PDEBUG("mutex lock failed with code: %d", rc);
+        // new_off = -rc;
+        // goto end;
+        return rc;
+    }
+
+    AESD_CIRCULAR_BUFFER_FOREACH(circ_buf_entry, &tmp_dev->circ_buf, cmd_idx){
+
+        if(cmd_idx == write_cmd){
+            new_off += write_cmd_offset;
+            break;
+        }
+        else{
+            new_off += circ_buf_entry->size;
+        }
+
+    }
+
+    mutex_unlock(&tmp_dev->device_lock);
+
+    filp->f_pos = new_off;
+    return new_off;
+
+
+}
+
+long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
+
+    loff_t new_off = 0;
+    struct aesd_seekto llseek_struct;
+
+    if (_IOC_TYPE(cmd) != AESD_IOC_MAGIC) return -ENOTTY;
+	if (_IOC_NR(cmd) > AESDCHAR_IOC_MAXNR) return -ENOTTY;
+
+
+    switch(cmd){
+
+        case AESDCHAR_IOCSEEKTO:
+            if(copy_from_user(&llseek_struct, (const void __user *) arg, sizeof(llseek_struct))){
+                return -EFAULT;
+            }
+            else{
+                new_off = aesd_adjust_file_offset(filp, llseek_struct.write_cmd, llseek_struct.write_cmd_offset);
+            }
+            break;
+        
+        default:
+            return -ENOTTY;
+        
+    }
+
+    return new_off;
+
 }
 
 ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
@@ -98,7 +234,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     bytes_return = tmp_dev->buf_entry->size - tmp_off_byte;
 
     // copy from kernel to user
-    bytes_left = copy_to_user(buf,tmp_dev->buf_entry->buffptr,bytes_return);
+    bytes_left = copy_to_user(buf,&tmp_dev->buf_entry->buffptr[tmp_off_byte],bytes_return);
 
     // check total bytes sent
     bytes_sent = tmp_dev->buf_entry->size - bytes_left;
@@ -243,6 +379,8 @@ struct file_operations aesd_fops = {
     .write =    aesd_write,
     .open =     aesd_open,
     .release =  aesd_release,
+    .llseek =   aesd_llseek,
+    .unlocked_ioctl = aesd_ioctl,
 };
 
 static int aesd_setup_cdev(struct aesd_dev *dev)
